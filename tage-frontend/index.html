@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$TAGE</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        .glass { background: rgba(20,20,20,0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="p-6">
+
+    <div id="startup" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
+        <h1 class="text-6xl font-black italic italic mb-4">$TAGE</h1>
+        <p id="status" class="text-blue-500 text-xs font-bold tracking-widest uppercase mb-6">Analyzing Profile...</p>
+        <div class="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+            <div id="progress-bar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
+        </div>
+        <div id="result" class="mt-10 hidden">
+            <h2 id="reward-text" class="text-7xl font-black mb-10">0</h2>
+            <button onclick="enterApp()" class="w-full bg-white text-black py-4 rounded-2xl font-black uppercase">Claim Reward</button>
+        </div>
+    </div>
+
+    <div id="app" class="hidden">
+        <div class="flex justify-between items-center mb-10">
+            <div>
+                <p id="ui-name" class="font-black text-xl">@Guest</p>
+                <p id="ui-id" class="text-[10px] text-zinc-500 font-bold uppercase">UID: 000000</p>
+            </div>
+            <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="ui-balance">0</div>
+        </div>
+
+        <div id="view-home" class="view-section">
+            <div class="glass p-10 rounded-[2rem] text-center">
+                <h3 class="font-black uppercase mb-4">Daily Check-in</h3>
+                <button class="w-full bg-blue-600 py-4 rounded-xl font-black uppercase">Watch Video</button>
+            </div>
+        </div>
+
+        <div id="view-tasks" class="view-section hidden">
+            <h3 class="font-black text-2xl uppercase mb-6">Tasks</h3>
+            <div class="space-y-3" id="task-list">
+                <div class="glass p-5 rounded-2xl flex justify-between items-center">
+                    <p class="font-bold">Follow $TAGE on X</p>
+                    <button class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="fixed bottom-0 left-0 w-full bg-black border-t border-white/10 flex justify-around p-6">
+            <button onclick="showView('home')" id="nav-home" class="nav-active font-black uppercase text-xs">Home</button>
+            <button onclick="showView('tasks')" id="nav-tasks" class="font-black uppercase text-xs text-zinc-500">Tasks</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const BACKEND_URL = "https://tage-production.up.railway.app"; 
+        let user = { id: 0, username: "Guest", points: 0 };
+
+        async function init() {
+            tg.ready();
+            tg.expand();
+
+            const userId = tg.initDataUnsafe.user?.id || 12345;
+            const username = tg.initDataUnsafe.user?.username || "Guest";
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/auth`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ userId, username })
+                });
+                const data = await res.json();
+                user = data;
+
+                // Animation
+                let p = 0;
+                let int = setInterval(() => {
+                    p++;
+                    document.getElementById('progress-bar').style.width = p + "%";
+                    if(p === 100) {
+                        clearInterval(int);
+                        document.getElementById('status').innerText = "VERIFIED";
+                        document.getElementById('reward-text').innerText = data.points.toLocaleString();
+                        document.getElementById('result').classList.remove('hidden');
+                    }
+                }, 20);
+            } catch (e) { document.getElementById('status').innerText = "Backend Error"; }
+        }
+
+        function enterApp() {
+            document.getElementById('startup').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            document.getElementById('ui-name').innerText = "@" + user.username;
+            document.getElementById('ui-id').innerText = "UID: " + user.telegram_id;
+            document.getElementById('ui-balance').innerText = user.points.toLocaleString();
+        }
+
+        function showView(name) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.add('hidden'));
+            document.getElementById('view-' + name).classList.remove('hidden');
+            document.getElementById('nav-home').classList.toggle('nav-active', name === 'home');
+            document.getElementById('nav-tasks').classList.toggle('nav-active', name === 'tasks');
+        }
+
+        init();
+    </script>
+</body>
+</html>
