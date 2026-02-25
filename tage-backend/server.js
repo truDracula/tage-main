@@ -36,6 +36,28 @@ app.post('/auth', async (req, res) => {
     res.json(user);
 });
 
+app.post('/add-points', async (req, res) => {
+    const { telegram_id, amount } = req.body;
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('points')
+        .eq('telegram_id', telegram_id)
+        .single();
+
+    if (data) {
+        const newPoints = data.points + amount;
+        await supabase
+            .from('users')
+            .update({ points: newPoints })
+            .eq('telegram_id', telegram_id);
+
+        res.json({ success: true, newPoints });
+    } else {
+        res.status(404).json({ error: "User not found" });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);

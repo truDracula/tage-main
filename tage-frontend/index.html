@@ -48,7 +48,7 @@
             <div class="space-y-3" id="task-list">
                 <div class="glass p-5 rounded-2xl flex justify-between items-center">
                     <p class="font-bold">Follow $TAGE on X</p>
-                    <button class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                    <button onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                 </div>
             </div>
         </div>
@@ -108,6 +108,25 @@
             document.getElementById('view-' + name).classList.remove('hidden');
             document.getElementById('nav-home').classList.toggle('nav-active', name === 'home');
             document.getElementById('nav-tasks').classList.toggle('nav-active', name === 'tasks');
+        }
+
+        async function completeTask() {
+            const userId = window.Telegram.WebApp.initDataUnsafe.user.id;
+
+            // 1. Open the X link in a new tab
+            window.open("https://x.com/your_handle", "_blank");
+
+            // 2. Tell the backend to add points
+            const response = await fetch(`${BACKEND_URL}/add-points`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_id: userId, amount: 1000 })
+            });
+
+            if (response.ok) {
+                alert("1,000 Points Added!");
+                location.reload(); // Refresh to show new balance
+            }
         }
 
         init();
