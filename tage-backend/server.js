@@ -1,11 +1,15 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const cors = require('cors');
 const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
-app.use(require('cors')({
+app.use(cors({
     origin: '*'
+    ,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
 }));
 app.use(express.json());
 
@@ -279,6 +283,30 @@ app.get('/leaderboard', async (req, res) => {
 
     if (error) return res.status(500).json(error);
     res.json(topUsers || []);
+});
+
+app.post('/admin/execute', async (req, res) => {
+    const { auth_key, admin_id, action, payload } = req.body;
+    const expectedKey = process.env.ADMIN_SECRET_KEY;
+    const expectedAdmin = process.env.ADMIN_ID;
+
+    if ((expectedKey && auth_key !== expectedKey) ||
+        (expectedAdmin && String(admin_id) !== String(expectedAdmin))) {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    if (action === 'add_task') {
+        const { error } = await supabase.from('tasks').insert([payload]);
+        if (error) return res.status(500).json(error);
+        return res.json({ success: true });
+    }
+
+    if (action === 'get_users') {
+        const { data } = await supabase.from('users').select('*').order('points', { ascending: false });
+        return res.json(data);
+    }
+
+    return res.status(400).json({ error: 'Unknown action' });
 });
 
 const PORT = process.env.PORT || 3000;

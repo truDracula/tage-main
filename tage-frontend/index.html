@@ -52,7 +52,7 @@
         <div class="flex justify-between items-center mb-10">
             <div>
                 <p id="username-display" class="font-black text-xl">@Guest</p>
-                <p id="ui-id" class="text-[10px] text-zinc-500 font-bold uppercase">UID: 000000</p>
+                <p id="uid-display" class="text-[10px] text-zinc-500 font-bold uppercase">UID: 000000</p>
             </div>
             <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="balance-display">0</div>
         </div>
@@ -158,9 +158,9 @@
             return "Guest";
         }
 
-        async function fetchUserData() {
-            const userId = tg.initDataUnsafe.user?.id || 12345;
-            const username = tg.initDataUnsafe.user?.username || "Guest";
+        async function loadUserData(tgUser) {
+            const userId = tgUser?.id || tg.initDataUnsafe.user?.id || 12345;
+            const username = tgUser?.username || tgUser?.first_name || tg.initDataUnsafe.user?.username || "Guest";
             const referrerId = tg.initDataUnsafe.start_param || null;
 
             const checkRes = await fetch(`${BACKEND_URL}/check-user`, {
@@ -213,7 +213,7 @@
             document.getElementById('analyze-screen').classList.add('hidden');
             document.getElementById('main-dashboard').classList.remove('hidden');
             document.getElementById('username-display').innerText = "@" + resolveDisplayName();
-            document.getElementById('ui-id').innerText = "UID: " + (user.telegram_id || currentUser.id);
+            document.getElementById('uid-display').innerText = "UID: " + (user.telegram_id || currentUser.id);
             updateUI(user);
         }
 
@@ -398,25 +398,44 @@
         async function initApp() {
             window.Telegram.WebApp.ready();
             tg.expand();
-            document.getElementById('username-display').innerText = `@${resolveDisplayName()}`;
 
-            setTimeout(async () => {
-                try {
-                    const hasSeenIntro = localStorage.getItem('isExistingUser');
-                    const isNewUser = await fetchUserData();
-                    hidePreloader();
+            let attempts = 0;
+            const checkTG = setInterval(async () => {
+                const telegramUser = tg.initDataUnsafe?.user;
 
-                    if (isNewUser && !hasSeenIntro) {
-                        await runAnalyzeAnimation();
+                if (telegramUser || attempts > 10) {
+                    clearInterval(checkTG);
+
+                    if (telegramUser) {
+                        document.getElementById('username-display').innerText = `@${telegramUser.username || telegramUser.first_name}`;
+                        document.getElementById('uid-display').innerText = `UID: ${telegramUser.id}`;
+                        localStorage.setItem('tage_user', JSON.stringify({
+                            username: telegramUser.username || telegramUser.first_name || "Guest",
+                            id: telegramUser.id
+                        }));
                     } else {
-                        showMainDashboard();
-                        showView('home');
+                        console.error("Telegram User not found after 10 attempts.");
+                        document.getElementById('username-display').innerText = `@${resolveDisplayName()}`;
                     }
-                } catch (e) {
-                    hidePreloader();
-                    document.getElementById('status').innerText = "Backend Error";
+
+                    try {
+                        const hasSeenIntro = localStorage.getItem('isExistingUser');
+                        const isNewUser = await loadUserData(telegramUser);
+                        hidePreloader();
+
+                        if (isNewUser && !hasSeenIntro) {
+                            await runAnalyzeAnimation();
+                        } else {
+                            showMainDashboard();
+                            showView('home');
+                        }
+                    } catch (e) {
+                        hidePreloader();
+                        document.getElementById('status').innerText = "Backend Error";
+                    }
                 }
-            }, 800);
+                attempts++;
+            }, 200);
         }
 
         initApp();
