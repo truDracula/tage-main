@@ -308,6 +308,23 @@ app.post('/admin/execute', async (req, res) => {
     }
 
     switch (action) {
+        case 'add_task':
+            await supabase.from('tasks').insert([payload]);
+            return res.json({ success: true });
+
+        case 'ban_user':
+            await supabase.from('users').update({ status: 'banned' }).eq('telegram_id', payload.uid);
+            return res.json({ success: true });
+
+        case 'unban_user':
+            await supabase.from('users').update({ status: 'active' }).eq('telegram_id', payload.uid);
+            return res.json({ success: true });
+
+        case 'get_detailed_users': {
+            const { data } = await supabase.from('users').select('*');
+            return res.json(data);
+        }
+
         case 'get_users': {
             const { data, error } = await supabase
                 .from('users')
