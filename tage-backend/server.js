@@ -300,6 +300,59 @@ app.get('/leaderboard', async (req, res) => {
     res.json(topUsers || []);
 });
 
+app.post('/admin/execute', async (req, res) => {
+    const { auth_key, admin_id, action, payload } = req.body;
+
+    if (auth_key !== process.env.ADMIN_SECRET_KEY || parseInt(admin_id) !== 1755569721) {
+        return res.status(403).send("Unauthorized");
+    }
+
+    switch (action) {
+        case 'get_users': {
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .order('points', { ascending: false });
+            if (error) return res.status(500).json(error);
+            return res.json(data || []);
+        }
+
+        case 'broadcast': {
+            const message = payload?.message;
+            if (!message) return res.status(400).json({ error: "Missing message" });
+            if (!process.env.TELEGRAM_BOT_TOKEN) {
+                return res.status(500).json({ error: "Missing TELEGRAM_BOT_TOKEN" });
+            }
+
+            const { data: users, error } = await supabase
+                .from('users')
+                .select('telegram_id');
+            if (error) return res.status(500).json(error);
+
+            let successCount = 0;
+            for (const u of users || []) {
+                if (!u.telegram_id) continue;
+                try {
+                    const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: u.telegram_id,
+                            text: message
+                        })
+                    });
+                    if (r.ok) successCount++;
+                } catch (_) {}
+            }
+
+            return res.json({ success: true, successCount });
+        }
+
+        default:
+            return res.status(400).send("Unknown action");
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
