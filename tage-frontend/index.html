@@ -48,7 +48,7 @@
             <div class="space-y-3" id="task-list">
                 <div class="glass p-5 rounded-2xl flex justify-between items-center">
                     <p class="font-bold">Follow $TAGE on X</p>
-                    <button onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                    <button id="task-btn" onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                 </div>
             </div>
         </div>
@@ -79,6 +79,7 @@
                 });
                 const data = await res.json();
                 user = data;
+                updateUI(user);
 
                 // Animation
                 let p = 0;
@@ -111,21 +112,38 @@
         }
 
         async function completeTask() {
-            const userId = window.Telegram.WebApp.initDataUnsafe.user.id;
+            const userId = window.Telegram.WebApp.initDataUnsafe.user?.id || user.telegram_id;
+            const taskId = "twitter_follow";
 
             // 1. Open the X link in a new tab
             window.open("https://x.com/your_handle", "_blank");
 
-            // 2. Tell the backend to add points
-            const response = await fetch(`${BACKEND_URL}/add-points`, {
+            // 2. Tell the backend to add points and mark task complete
+            const response = await fetch(`${BACKEND_URL}/complete-task`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ telegram_id: userId, amount: 1000 })
+                body: JSON.stringify({ telegram_id: userId, task_id: taskId })
             });
 
             if (response.ok) {
+                user.points += 1000;
+                user.completed_tasks = [...(user.completed_tasks || []), taskId];
+                updateUI(user);
                 alert("1,000 Points Added!");
-                location.reload(); // Refresh to show new balance
+            } else {
+                const error = await response.json();
+                alert(error.error || "Task claim failed");
+            }
+        }
+
+        function updateUI(userData) {
+            const btn = document.getElementById('task-btn');
+
+            if (userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
+                btn.innerText = "CLAIMED";
+                btn.disabled = true;
+                btn.style.backgroundColor = "#6c757d";
+                btn.style.cursor = "not-allowed";
             }
         }
 

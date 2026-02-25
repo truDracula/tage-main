@@ -28,7 +28,8 @@ app.post('/auth', async (req, res) => {
                 telegram_id: userId, 
                 username: username, 
                 points: age * 10,
-                account_age_days: age 
+                account_age_days: age,
+                completed_tasks: []
             }])
             .select().single();
         user = newUser;
@@ -36,26 +37,33 @@ app.post('/auth', async (req, res) => {
     res.json(user);
 });
 
-app.post('/add-points', async (req, res) => {
-    const { telegram_id, amount } = req.body;
+app.post('/complete-task', async (req, res) => {
+    const { telegram_id, task_id } = req.body;
 
-    const { data, error } = await supabase
+    const { data: user, error: fetchError } = await supabase
         .from('users')
-        .select('points')
+        .select('points, completed_tasks')
         .eq('telegram_id', telegram_id)
         .single();
 
-    if (data) {
-        const newPoints = data.points + amount;
-        await supabase
-            .from('users')
-            .update({ points: newPoints })
-            .eq('telegram_id', telegram_id);
+    if (fetchError || !user) return res.status(404).json({ error: "User not found" });
 
-        res.json({ success: true, newPoints });
-    } else {
-        res.status(404).json({ error: "User not found" });
+    const tasks = user.completed_tasks || [];
+    if (tasks.includes(task_id)) {
+        return res.status(400).json({ error: "Task already claimed!" });
     }
+
+    const { error: updateError } = await supabase
+        .from('users')
+        .update({
+            points: user.points + 1000,
+            completed_tasks: [...tasks, task_id]
+        })
+        .eq('telegram_id', telegram_id);
+
+    if (updateError) return res.status(500).json(updateError);
+
+    res.json({ success: true, message: "Points added and task recorded!" });
 });
 
 const PORT = process.env.PORT || 3000;
