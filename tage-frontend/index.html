@@ -12,6 +12,11 @@
         .glass { background: rgba(20,20,20,0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
         .hidden { display: none; }
+        .tabs-header { display: flex; gap: 8px; margin-bottom: 12px; }
+        .tab { flex: 1; text-align: center; padding: 10px 8px; border-radius: 10px; background: rgba(255,255,255,0.06); font-size: 12px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+        .tab.active { background: #2563eb; color: #fff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body class="p-6">
@@ -28,10 +33,10 @@
         </div>
     </div>
 
-    <div id="main-dashboard" class="hidden">
+        <div id="main-dashboard" class="hidden">
         <div class="flex justify-between items-center mb-10">
             <div>
-                <p id="ui-name" class="font-black text-xl">@Guest</p>
+                <p id="username-display" class="font-black text-xl">@Guest</p>
                 <p id="ui-id" class="text-[10px] text-zinc-500 font-bold uppercase">UID: 000000</p>
             </div>
             <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="balance-display">0</div>
@@ -47,11 +52,31 @@
 
         <div id="view-tasks" class="view-section hidden">
             <h3 class="font-black text-2xl uppercase mb-6">Tasks</h3>
-            <div class="space-y-3" id="task-list">
-                <div class="glass p-5 rounded-2xl flex justify-between items-center">
-                    <p class="font-bold">Follow $TAGE on X</p>
-                    <button id="task-btn" onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+            <div class="tabs-header">
+                <div class="tab active" onclick="switchTab('today', event)">Today</div>
+                <div class="tab" onclick="switchTab('partner', event)">Partners</div>
+                <div class="tab" onclick="switchTab('completed', event)">Completed</div>
+            </div>
+
+            <div id="today" class="tab-content active">
+                <div class="space-y-3">
+                    <div class="glass p-5 rounded-2xl flex justify-between items-center">
+                        <p class="font-bold">Follow $TAGE on X</p>
+                        <button id="task-btn" onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                    </div>
+                    <div class="glass p-5 rounded-2xl flex justify-between items-center">
+                        <p class="font-bold">Watch an Ad</p>
+                        <button onclick="watchAd()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                    </div>
                 </div>
+            </div>
+
+            <div id="partner" class="tab-content">
+                <div class="glass p-5 rounded-2xl text-sm text-zinc-300">Partner offers coming soon.</div>
+            </div>
+
+            <div id="completed" class="tab-content">
+                <div id="completed-list" class="glass p-5 rounded-2xl text-sm text-zinc-300">No tasks completed yet.</div>
             </div>
         </div>
 
@@ -85,6 +110,25 @@
         const AdController = window.Adsgram ? window.Adsgram.init({ blockId: "46576" }) : null;
         let user = { id: 0, username: "Guest", points: 0 };
         let currentUser = { id: 0 };
+
+        function resolveDisplayName() {
+            const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+            if (tgUser) {
+                const value = {
+                    username: tgUser.username || tgUser.first_name || "Guest",
+                    id: tgUser.id || currentUser.id
+                };
+                localStorage.setItem('tage_user', JSON.stringify(value));
+                return value.username;
+            }
+
+            const saved = localStorage.getItem('tage_user');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                return parsed.username || "Guest";
+            }
+            return "Guest";
+        }
 
         async function fetchUserData() {
             const userId = tg.initDataUnsafe.user?.id || 12345;
@@ -137,7 +181,7 @@
         function showMainDashboard() {
             document.getElementById('analyze-screen').classList.add('hidden');
             document.getElementById('main-dashboard').classList.remove('hidden');
-            document.getElementById('ui-name').innerText = "@" + (user.username || "Guest");
+            document.getElementById('username-display').innerText = "@" + resolveDisplayName();
             document.getElementById('ui-id').innerText = "UID: " + (user.telegram_id || currentUser.id);
             updateUI(user);
         }
@@ -155,6 +199,13 @@
             document.getElementById('nav-referrals').classList.toggle('nav-active', name === 'referrals');
             document.getElementById('nav-leaderboard').classList.toggle('nav-active', name === 'leaderboard');
             if (name === 'leaderboard') loadLeaderboard();
+        }
+
+        function switchTab(tabId, evt) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            evt.currentTarget.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
         }
 
         async function completeTask() {
@@ -233,6 +284,7 @@
             const btn = document.getElementById('task-btn');
             const pointsEl = document.getElementById('balance-display');
             const adCounter = document.getElementById('ad-count-display');
+            const completedList = document.getElementById('completed-list');
 
             if (pointsEl) pointsEl.innerText = (userData.points || 0).toLocaleString();
             if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
@@ -242,6 +294,11 @@
                 btn.disabled = true;
                 btn.style.backgroundColor = "#6c757d";
                 btn.style.cursor = "not-allowed";
+            }
+
+            if (completedList) {
+                const done = userData.completed_tasks || [];
+                completedList.innerText = done.length ? done.join(', ') : "No tasks completed yet.";
             }
         }
 
@@ -272,8 +329,9 @@
         }
 
         async function startApp() {
-            tg.ready();
+            window.Telegram.WebApp.ready();
             tg.expand();
+            document.getElementById('username-display').innerText = `@${resolveDisplayName()}`;
 
             try {
                 const hasSeenIntro = localStorage.getItem('isExistingUser');
