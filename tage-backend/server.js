@@ -29,7 +29,9 @@ app.post('/auth', async (req, res) => {
                 username: username, 
                 points: age * 10,
                 account_age_days: age,
-                completed_tasks: []
+                completed_tasks: [],
+                ads_watched_today: 0,
+                last_ad_date: null
             }])
             .select().single();
         user = newUser;
@@ -64,6 +66,43 @@ app.post('/complete-task', async (req, res) => {
     if (updateError) return res.status(500).json(updateError);
 
     res.json({ success: true, message: "Points added and task recorded!" });
+});
+
+app.post('/watch-ad', async (req, res) => {
+    const { telegram_id } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: user, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegram_id)
+        .single();
+
+    if (fetchError || !user) return res.status(404).json({ error: "User not found" });
+
+    let count = user.ads_watched_today || 0;
+    if (user.last_ad_date !== today) {
+        count = 0;
+    }
+
+    if (count >= 10) {
+        return res.status(400).json({ error: "Daily limit reached" });
+    }
+
+    const newPoints = user.points + 500;
+    const watchedToday = count + 1;
+    const { error } = await supabase
+        .from('users')
+        .update({
+            points: newPoints,
+            ads_watched_today: watchedToday,
+            last_ad_date: today
+        })
+        .eq('telegram_id', telegram_id);
+
+    if (error) return res.status(500).json(error);
+
+    res.json({ success: true, newPoints, watchedToday });
 });
 
 const PORT = process.env.PORT || 3000;

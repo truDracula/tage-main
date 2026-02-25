@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$TAGE</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
@@ -15,7 +16,7 @@
 </head>
 <body class="p-6">
 
-    <div id="startup" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
+    <div id="analyze-screen" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
         <h1 class="text-6xl font-black italic italic mb-4">$TAGE</h1>
         <p id="status" class="text-blue-500 text-xs font-bold tracking-widest uppercase mb-6">Analyzing Profile...</p>
         <div class="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
@@ -27,19 +28,20 @@
         </div>
     </div>
 
-    <div id="app" class="hidden">
+    <div id="main-dashboard" class="hidden">
         <div class="flex justify-between items-center mb-10">
             <div>
                 <p id="ui-name" class="font-black text-xl">@Guest</p>
                 <p id="ui-id" class="text-[10px] text-zinc-500 font-bold uppercase">UID: 000000</p>
             </div>
-            <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="ui-balance">0</div>
+            <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="balance-display">0</div>
         </div>
 
         <div id="view-home" class="view-section">
             <div class="glass p-10 rounded-[2rem] text-center">
                 <h3 class="font-black uppercase mb-4">Daily Check-in</h3>
-                <button class="w-full bg-blue-600 py-4 rounded-xl font-black uppercase">Watch Video</button>
+                <button onclick="watchAd()" class="w-full bg-blue-600 py-4 rounded-xl font-black uppercase">Watch Video</button>
+                <p class="text-xs text-zinc-400 mt-3">Ads Today: <span id="ad-count-display">0/10</span></p>
             </div>
         </div>
 
@@ -62,46 +64,63 @@
     <script>
         const tg = window.Telegram.WebApp;
         const BACKEND_URL = "https://tage-main-production.up.railway.app";
+        const AdController = window.Adsgram ? window.Adsgram.init({ blockId: "46576" }) : null;
         let user = { id: 0, username: "Guest", points: 0 };
+        let currentUser = { id: 0 };
 
-        async function init() {
-            tg.ready();
-            tg.expand();
-
+        async function fetchUserData() {
             const userId = tg.initDataUnsafe.user?.id || 12345;
             const username = tg.initDataUnsafe.user?.username || "Guest";
 
-            try {
-                const res = await fetch(`${BACKEND_URL}/auth`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ userId, username })
-                });
-                const data = await res.json();
-                user = data;
-                updateUI(user);
+            const res = await fetch(`${BACKEND_URL}/auth`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ userId, username })
+            });
+            const data = await res.json();
+            user = data;
+            currentUser.id = data.telegram_id || userId;
+            updateUI(user);
+        }
 
-                // Animation
-                let p = 0;
-                let int = setInterval(() => {
+        function getTodayAdCount(userData) {
+            const today = new Date().toISOString().split('T')[0];
+            return userData.last_ad_date === today ? (userData.ads_watched_today || 0) : 0;
+        }
+
+        function runAnalyzeAnimation() {
+            document.getElementById('status').innerText = "Analyzing Profile...";
+            document.getElementById('result').classList.add('hidden');
+
+            let p = 0;
+            const bar = document.getElementById('progress-bar');
+
+            return new Promise((resolve) => {
+                const int = setInterval(() => {
                     p++;
-                    document.getElementById('progress-bar').style.width = p + "%";
-                    if(p === 100) {
+                    bar.style.width = p + "%";
+                    if (p === 100) {
                         clearInterval(int);
                         document.getElementById('status').innerText = "VERIFIED";
-                        document.getElementById('reward-text').innerText = data.points.toLocaleString();
+                        document.getElementById('reward-text').innerText = user.points.toLocaleString();
                         document.getElementById('result').classList.remove('hidden');
+                        resolve();
                     }
                 }, 20);
-            } catch (e) { document.getElementById('status').innerText = "Backend Error"; }
+            });
+        }
+
+        function showMainDashboard() {
+            document.getElementById('analyze-screen').classList.add('hidden');
+            document.getElementById('main-dashboard').classList.remove('hidden');
+            document.getElementById('ui-name').innerText = "@" + (user.username || "Guest");
+            document.getElementById('ui-id').innerText = "UID: " + (user.telegram_id || currentUser.id);
+            updateUI(user);
         }
 
         function enterApp() {
-            document.getElementById('startup').classList.add('hidden');
-            document.getElementById('app').classList.remove('hidden');
-            document.getElementById('ui-name').innerText = "@" + user.username;
-            document.getElementById('ui-id').innerText = "UID: " + user.telegram_id;
-            document.getElementById('ui-balance').innerText = user.points.toLocaleString();
+            localStorage.setItem('isExistingUser', 'true');
+            showMainDashboard();
         }
 
         function showView(name) {
@@ -136,10 +155,55 @@
             }
         }
 
+        async function watchAd() {
+            if (!AdController) {
+                alert("Ads are not available right now.");
+                return;
+            }
+
+            try {
+                const result = await AdController.show();
+                if (result.done) {
+                    await claimAdReward();
+                }
+            } catch (error) {
+                if (error.error === 'not_found') {
+                    alert("No ads available. Try again in a few minutes!");
+                } else {
+                    console.error("Ad error:", error);
+                }
+            }
+        }
+
+        async function claimAdReward() {
+            const response = await fetch(`${BACKEND_URL}/watch-ad`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegram_id: currentUser.id })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                user.points = data.newPoints;
+                user.ads_watched_today = data.watchedToday;
+                user.last_ad_date = new Date().toISOString().split('T')[0];
+                document.getElementById('balance-display').innerText = data.newPoints.toLocaleString();
+                document.getElementById('ad-count-display').innerText = `${data.watchedToday}/10`;
+                alert("Success! +500 points.");
+            } else {
+                alert(data.error);
+            }
+        }
+
         function updateUI(userData) {
             const btn = document.getElementById('task-btn');
+            const pointsEl = document.getElementById('balance-display');
+            const adCounter = document.getElementById('ad-count-display');
 
-            if (userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
+            if (pointsEl) pointsEl.innerText = (userData.points || 0).toLocaleString();
+            if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
+
+            if (btn && userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
                 btn.innerText = "CLAIMED";
                 btn.disabled = true;
                 btn.style.backgroundColor = "#6c757d";
@@ -147,7 +211,27 @@
             }
         }
 
-        init();
+        async function startApp() {
+            tg.ready();
+            tg.expand();
+
+            try {
+                const hasSeenIntro = localStorage.getItem('isExistingUser');
+                if (hasSeenIntro) {
+                    document.getElementById('analyze-screen').style.display = 'none';
+                    document.getElementById('main-dashboard').style.display = 'block';
+                    await fetchUserData();
+                    showView('home');
+                } else {
+                    await fetchUserData();
+                    await runAnalyzeAnimation();
+                }
+            } catch (e) {
+                document.getElementById('status').innerText = "Backend Error";
+            }
+        }
+
+        startApp();
     </script>
 </body>
 </html>
