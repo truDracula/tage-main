@@ -1,5 +1,6 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -10,7 +11,33 @@ app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-async function giveCommission(userId, amount) {
+function verifyTelegramData(initData) {
+    if (!initData || !process.env.TELEGRAM_BOT_TOKEN) return false;
+
+    const urlParams = new URLSearchParams(initData);
+    const hash = urlParams.get('hash');
+    if (!hash) return false;
+    urlParams.delete('hash');
+
+    const dataCheckString = Array.from(urlParams.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+    const secretKey = crypto.createHmac('sha256', 'WebAppData')
+        .update(process.env.TELEGRAM_BOT_TOKEN)
+        .digest();
+
+    const signature = crypto.createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
+
+    return signature === hash;
+}
+
+async function awardPoints(userId, amount) {
+    await supabase.rpc('increment_points', { user_id: userId, amount });
+
     const { data: user } = await supabase
         .from('users')
         .select('referred_by')
@@ -106,7 +133,11 @@ app.post('/auth', async (req, res) => {
 });
 
 app.post('/complete-task', async (req, res) => {
-    const { telegram_id, task_id } = req.body;
+    const { initData, telegram_id, task_id } = req.body;
+
+    if (!verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
 
     const { data: user, error: fetchError } = await supabase
         .from('users')
@@ -124,24 +155,27 @@ app.post('/complete-task', async (req, res) => {
     const { error: updateError } = await supabase
         .from('users')
         .update({
-            points: user.points + 1000,
             completed_tasks: [...tasks, task_id]
         })
         .eq('telegram_id', telegram_id);
 
     if (updateError) return res.status(500).json(updateError);
 
-    await giveCommission(telegram_id, 1000);
+    await awardPoints(telegram_id, 1000);
     res.json({ success: true, message: "Points added and task recorded!" });
 });
 
 app.post('/watch-ad', async (req, res) => {
-    const { telegram_id } = req.body;
+    const { initData, telegram_id } = req.body;
     const today = new Date().toISOString().split('T')[0];
+
+    if (!verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
 
     const { data: user, error: fetchError } = await supabase
         .from('users')
-        .select('*')
+        .select('points, ads_watched_today, last_ad_date')
         .eq('telegram_id', telegram_id)
         .single();
 
@@ -156,12 +190,12 @@ app.post('/watch-ad', async (req, res) => {
         return res.status(400).json({ error: "Daily limit reached" });
     }
 
-    const newPoints = user.points + 500;
     const watchedToday = count + 1;
+    await awardPoints(telegram_id, 500);
+
     const { error } = await supabase
         .from('users')
         .update({
-            points: newPoints,
             ads_watched_today: watchedToday,
             last_ad_date: today
         })
@@ -169,8 +203,18 @@ app.post('/watch-ad', async (req, res) => {
 
     if (error) return res.status(500).json(error);
 
-    await giveCommission(telegram_id, 500);
-    res.json({ success: true, newPoints, watchedToday });
+    res.json({ success: true, newPoints: user.points + 500, watchedToday });
+});
+
+app.get('/leaderboard', async (req, res) => {
+    const { data: topUsers, error } = await supabase
+        .from('users')
+        .select('username, points')
+        .order('points', { ascending: false })
+        .limit(50);
+
+    if (error) return res.status(500).json(error);
+    res.json(topUsers || []);
 });
 
 const PORT = process.env.PORT || 3000;
