@@ -17,9 +17,24 @@
         .tab.active { background: #2563eb; color: #fff; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        #preloader { position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.25s ease; }
+        .loader-spin { width: 40px; height: 40px; border: 4px solid #1e293b; border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .tabs-container { display: flex; gap: 10px; margin-bottom: 20px; background: #1e293b; padding: 5px; border-radius: 12px; }
+        .tab-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; background: transparent; color: #94a3b8; font-weight: bold; cursor: pointer; }
+        .tab-btn.active { background: #38bdf8; color: #0f172a; }
+        .lb-card { background: #1e293b; border-radius: 16px; padding: 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #334155; }
+        .lb-info { display: flex; align-items: center; gap: 12px; }
+        .lb-rank { font-weight: 800; color: #38bdf8; width: 30px; }
+        .lb-name { font-weight: 600; color: white; }
+        .lb-points { color: #38bdf8; font-weight: 700; }
     </style>
 </head>
 <body class="p-6">
+    <div id="preloader">
+        <div class="loader-spin"></div>
+        <p style="color: #38bdf8; margin-top: 15px; font-weight: bold;">SYNCING WITH TELEGRAM...</p>
+    </div>
 
     <div id="analyze-screen" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
         <h1 class="text-6xl font-black italic italic mb-4">$TAGE</h1>
@@ -90,9 +105,15 @@
         </div>
 
         <div id="view-leaderboard" class="view-section hidden">
-            <h3 class="font-black text-2xl uppercase mb-6">Leaderboard</h3>
-            <div class="glass p-5 rounded-2xl">
-                <ol id="leaderboard" class="space-y-2 text-sm text-zinc-200"></ol>
+            <h2 style="text-align: center;" class="font-black text-2xl mb-6">LEADERBOARD</h2>
+            <div class="tabs-container">
+                <button id="lb-tab-total" class="tab-btn active" onclick="switchLBTab('total')">TOTAL POINTS</button>
+                <button id="lb-tab-refs" class="tab-btn" onclick="switchLBTab('refs')">REF KINGS</button>
+            </div>
+            <div id="lb-list"></div>
+            <div class="glass p-5 rounded-2xl mt-4">
+                <h3 class="font-black uppercase mb-3">Referral Milestones</h3>
+                <div id="milestone-list"></div>
             </div>
         </div>
 
@@ -108,8 +129,15 @@
         const tg = window.Telegram.WebApp;
         const BACKEND_URL = "https://tage-main-production.up.railway.app";
         const AdController = window.Adsgram ? window.Adsgram.init({ blockId: "46576" }) : null;
+        const MILESTONES = [
+            { type: 'friends', goal: 5, reward: 10000 },
+            { type: 'friends', goal: 10, reward: 25000 },
+            { type: 'friends', goal: 50, reward: 100000 },
+            { type: 'friends', goal: 1000, reward: 1000000 }
+        ];
         let user = { id: 0, username: "Guest", points: 0 };
-        let currentUser = { id: 0 };
+        let currentUser = { id: 0, refCount: 0 };
+        let currentLBTab = 'total';
 
         function resolveDisplayName() {
             const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
@@ -135,7 +163,7 @@
             const username = tg.initDataUnsafe.user?.username || "Guest";
             const referrerId = tg.initDataUnsafe.start_param || null;
 
-            const registerRes = await fetch(`${BACKEND_URL}/register`, {
+            const checkRes = await fetch(`${BACKEND_URL}/check-user`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
@@ -144,11 +172,14 @@
                     referrer_id: referrerId
                 })
             });
-            const data = await registerRes.json();
-            user = data;
-            currentUser.id = data.telegram_id || userId;
+            const data = await checkRes.json();
+            user = data.user || {};
+            currentUser.id = user.telegram_id || userId;
+            currentUser.refCount = data.ref_count || 0;
             updateUI(user);
             initReferralPage();
+            renderMilestones(currentUser.refCount);
+            return data.isNewUser;
         }
 
         function getTodayAdCount(userData) {
@@ -198,7 +229,7 @@
             document.getElementById('nav-tasks').classList.toggle('nav-active', name === 'tasks');
             document.getElementById('nav-referrals').classList.toggle('nav-active', name === 'referrals');
             document.getElementById('nav-leaderboard').classList.toggle('nav-active', name === 'leaderboard');
-            if (name === 'leaderboard') loadLeaderboard();
+            if (name === 'leaderboard') loadLeaderboard(currentLBTab);
         }
 
         function switchTab(tabId, evt) {
@@ -315,41 +346,80 @@
         }
 
         async function loadLeaderboard() {
-            const res = await fetch(`${BACKEND_URL}/leaderboard`);
-            const topUsers = await res.json();
-
-            const listHtml = topUsers.map((row, index) => {
-                let level = "Bronze";
-                if (row.points >= 200000) level = "Gold";
-                else if (row.points >= 50000) level = "Silver";
-                return `<li>#${index + 1} ${row.username || "Anon"} - ${level} (${row.points || 0} pts)</li>`;
-            }).join('');
-
-            document.getElementById('leaderboard').innerHTML = listHtml || "<li>No users yet.</li>";
+            const res = await fetch(`${BACKEND_URL}/leaderboard?type=${currentLBTab}`);
+            const data = await res.json();
+            renderLeaderboard(data, currentLBTab);
         }
 
-        async function startApp() {
+        function switchLBTab(type) {
+            currentLBTab = type;
+            document.getElementById('lb-tab-total').classList.toggle('active', type === 'total');
+            document.getElementById('lb-tab-refs').classList.toggle('active', type === 'refs');
+            loadLeaderboard(type);
+        }
+
+        function renderLeaderboard(data, type) {
+            const container = document.getElementById('lb-list');
+            if (!Array.isArray(data) || !data.length) {
+                container.innerHTML = '<div class="lb-card"><span class="lb-name">No users yet.</span></div>';
+                return;
+            }
+
+            container.innerHTML = data.map((u, i) => `
+                <div class="lb-card">
+                    <div class="lb-info">
+                        <span class="lb-rank">#${i + 1}</span>
+                        <span class="lb-name">@${u.username || "anon"}</span>
+                    </div>
+                    <span class="lb-points">${type === 'total' ? Number(u.points || 0).toLocaleString() : `${u.ref_count || 0} Refs`}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderMilestones(refCount) {
+            const el = document.getElementById('milestone-list');
+            el.innerHTML = MILESTONES.map((m) => {
+                const done = refCount >= m.goal;
+                return `<div class="lb-card">
+                    <div class="lb-info">
+                        <span class="lb-name">${m.goal} Friends</span>
+                    </div>
+                    <span class="lb-points">${done ? 'Claimed' : `${m.reward.toLocaleString()} pts`}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function hidePreloader() {
+            const pre = document.getElementById('preloader');
+            pre.style.opacity = '0';
+            setTimeout(() => { pre.style.display = 'none'; }, 250);
+        }
+
+        async function initApp() {
             window.Telegram.WebApp.ready();
             tg.expand();
             document.getElementById('username-display').innerText = `@${resolveDisplayName()}`;
 
-            try {
-                const hasSeenIntro = localStorage.getItem('isExistingUser');
-                if (hasSeenIntro) {
-                    document.getElementById('analyze-screen').style.display = 'none';
-                    document.getElementById('main-dashboard').style.display = 'block';
-                    await fetchUserData();
-                    showView('home');
-                } else {
-                    await fetchUserData();
-                    await runAnalyzeAnimation();
+            setTimeout(async () => {
+                try {
+                    const hasSeenIntro = localStorage.getItem('isExistingUser');
+                    const isNewUser = await fetchUserData();
+                    hidePreloader();
+
+                    if (isNewUser && !hasSeenIntro) {
+                        await runAnalyzeAnimation();
+                    } else {
+                        showMainDashboard();
+                        showView('home');
+                    }
+                } catch (e) {
+                    hidePreloader();
+                    document.getElementById('status').innerText = "Backend Error";
                 }
-            } catch (e) {
-                document.getElementById('status').innerText = "Backend Error";
-            }
+            }, 800);
         }
 
-        startApp();
+        initApp();
     </script>
 </body>
 </html>

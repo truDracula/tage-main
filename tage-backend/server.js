@@ -55,8 +55,7 @@ async function awardPoints(userId, amount) {
     }
 }
 
-app.post('/register', async (req, res) => {
-    const { telegram_id, username, referrer_id } = req.body;
+async function upsertUser(telegram_id, username, referrer_id) {
     const referredBy =
         referrer_id && String(referrer_id) !== String(telegram_id) ? referrer_id : null;
 
@@ -79,8 +78,8 @@ app.post('/register', async (req, res) => {
             .select()
             .single();
 
-        if (updateError) return res.status(500).json(updateError);
-        return res.json(updatedUser);
+        if (updateError) throw updateError;
+        return { user: updatedUser, isNewUser: false };
     }
 
     const { data: newUser, error } = await supabase
@@ -98,8 +97,34 @@ app.post('/register', async (req, res) => {
         .select()
         .single();
 
-    if (error) return res.status(500).json(error);
-    res.json(newUser);
+    if (error) throw error;
+    return { user: newUser, isNewUser: true };
+}
+
+app.post('/register', async (req, res) => {
+    const { telegram_id, username, referrer_id } = req.body;
+    try {
+        const { user } = await upsertUser(telegram_id, username, referrer_id);
+        res.json(user);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+});
+
+app.post('/check-user', async (req, res) => {
+    const { telegram_id, username, referrer_id } = req.body;
+
+    try {
+        const result = await upsertUser(telegram_id, username, referrer_id);
+        const { count } = await supabase
+            .from('users')
+            .select('*', { head: true, count: 'exact' })
+            .eq('referred_by', telegram_id);
+
+        res.json({ isNewUser: result.isNewUser, user: result.user, ref_count: count || 0 });
+    } catch (error) {
+        res.status(500).json(error);
+    }
 });
 
 app.post('/auth', async (req, res) => {
@@ -165,6 +190,21 @@ app.post('/complete-task', async (req, res) => {
     res.json({ success: true, message: "Points added and task recorded!" });
 });
 
+app.post('/claim-task', async (req, res) => {
+    const { initData, telegram_id, task_reward } = req.body;
+    const reward = Number(task_reward) || 0;
+
+    if (!verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
+    if (reward <= 0) {
+        return res.status(400).json({ error: "Invalid task reward" });
+    }
+
+    await awardPoints(telegram_id, reward);
+    res.json({ success: true });
+});
+
 app.post('/watch-ad', async (req, res) => {
     const { initData, telegram_id } = req.body;
     const today = new Date().toISOString().split('T')[0];
@@ -207,6 +247,30 @@ app.post('/watch-ad', async (req, res) => {
 });
 
 app.get('/leaderboard', async (req, res) => {
+    const type = req.query.type || 'total';
+
+    if (type === 'refs') {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('telegram_id, username, referred_by');
+        if (error) return res.status(500).json(error);
+
+        const counts = {};
+        for (const u of users || []) {
+            if (u.referred_by) counts[u.referred_by] = (counts[u.referred_by] || 0) + 1;
+        }
+
+        const ranking = (users || [])
+            .map((u) => ({
+                username: u.username,
+                ref_count: counts[u.telegram_id] || 0
+            }))
+            .sort((a, b) => b.ref_count - a.ref_count)
+            .slice(0, 50);
+
+        return res.json(ranking);
+    }
+
     const { data: topUsers, error } = await supabase
         .from('users')
         .select('username, points')
