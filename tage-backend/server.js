@@ -131,6 +131,21 @@ app.post('/check-user', async (req, res) => {
     }
 });
 
+app.post('/user-init', async (req, res) => {
+    const { uid, username, referrer_id } = req.body;
+
+    try {
+        const result = await upsertUser(uid, username || 'Guest', referrer_id || null);
+        res.json({
+            ...result.user,
+            isNewUser: result.isNewUser,
+            status: result.user.status || 'active'
+        });
+    } catch (error) {
+        res.status(500).json(error);
+    }
+});
+
 app.post('/auth', async (req, res) => {
     const { userId, username } = req.body;
     
@@ -287,26 +302,36 @@ app.get('/leaderboard', async (req, res) => {
 
 app.post('/admin/execute', async (req, res) => {
     const { auth_key, admin_id, action, payload } = req.body;
-    const expectedKey = process.env.ADMIN_SECRET_KEY;
-    const expectedAdmin = process.env.ADMIN_ID;
-
-    if ((expectedKey && auth_key !== expectedKey) ||
-        (expectedAdmin && String(admin_id) !== String(expectedAdmin))) {
-        return res.status(403).json({ error: 'Unauthorized' });
+    if (auth_key !== process.env.ADMIN_SECRET_KEY || parseInt(admin_id) !== 1755569721) {
+        return res.status(403).send("Unauthorized");
     }
 
-    if (action === 'add_task') {
-        const { error } = await supabase.from('tasks').insert([payload]);
-        if (error) return res.status(500).json(error);
-        return res.json({ success: true });
-    }
+    switch (action) {
+        case 'add_task':
+            await supabase.from('tasks').insert([payload]);
+            return res.json({ success: true });
 
-    if (action === 'get_users') {
-        const { data } = await supabase.from('users').select('*').order('points', { ascending: false });
-        return res.json(data);
-    }
+        case 'ban_user':
+            await supabase.from('users').update({ status: 'banned' }).eq('telegram_id', payload.uid);
+            return res.json({ success: true });
 
-    return res.status(400).json({ error: 'Unknown action' });
+        case 'unban_user':
+            await supabase.from('users').update({ status: 'active' }).eq('telegram_id', payload.uid);
+            return res.json({ success: true });
+
+        case 'get_detailed_users': {
+            const { data } = await supabase.from('users').select('*');
+            return res.json(data);
+        }
+
+        case 'get_users': {
+            const { data } = await supabase.from('users').select('*').order('points', { ascending: false });
+            return res.json(data);
+        }
+
+        default:
+            return res.status(400).send("Unknown action");
+    }
 });
 
 const PORT = process.env.PORT || 3000;

@@ -395,50 +395,55 @@
             setTimeout(() => { pre.style.display = 'none'; }, 250);
         }
 
-        async function initApp() {
-            window.Telegram.WebApp.ready();
+        async function startApp() {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
             tg.expand();
 
-            let attempts = 0;
-            const checkTG = setInterval(async () => {
-                const telegramUser = tg.initDataUnsafe?.user;
+            if (!tg.initDataUnsafe.user) {
+                setTimeout(startApp, 1000);
+                return;
+            }
 
-                if (telegramUser || attempts > 10) {
-                    clearInterval(checkTG);
+            const telegramUser = tg.initDataUnsafe.user;
 
-                    if (telegramUser) {
-                        document.getElementById('username-display').innerText = `@${telegramUser.username || telegramUser.first_name}`;
-                        document.getElementById('uid-display').innerText = `UID: ${telegramUser.id}`;
-                        localStorage.setItem('tage_user', JSON.stringify({
-                            username: telegramUser.username || telegramUser.first_name || "Guest",
-                            id: telegramUser.id
-                        }));
-                    } else {
-                        console.error("Telegram User not found after 10 attempts.");
-                        document.getElementById('username-display').innerText = `@${resolveDisplayName()}`;
-                    }
+            const response = await fetch(`${BACKEND_URL}/user-init`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: telegramUser.id,
+                    username: telegramUser.username || telegramUser.first_name
+                })
+            });
+            const userData = await response.json();
 
-                    try {
-                        const hasSeenIntro = localStorage.getItem('isExistingUser');
-                        const isNewUser = await loadUserData(telegramUser);
-                        hidePreloader();
+            if (userData.status === 'banned') {
+                document.body.innerHTML = "<h1>YOUR ACCOUNT IS BANNED</h1>";
+                return;
+            }
 
-                        if (isNewUser && !hasSeenIntro) {
-                            await runAnalyzeAnimation();
-                        } else {
-                            showMainDashboard();
-                            showView('home');
-                        }
-                    } catch (e) {
-                        hidePreloader();
-                        document.getElementById('status').innerText = "Backend Error";
-                    }
-                }
-                attempts++;
-            }, 200);
+            user = userData;
+            currentUser.id = userData.telegram_id || telegramUser.id;
+            currentUser.refCount = currentUser.refCount || 0;
+            localStorage.setItem('tage_user', JSON.stringify({
+                username: telegramUser.username || telegramUser.first_name || "Guest",
+                id: telegramUser.id
+            }));
+
+            document.getElementById('preloader').style.display = 'none';
+            document.getElementById('username-display').innerText = "@" + (telegramUser.username || telegramUser.first_name || "Guest");
+            document.getElementById('uid-display').innerText = "UID: " + telegramUser.id;
+
+            const hasSeenIntro = localStorage.getItem('isExistingUser');
+            if (userData.isNewUser && !hasSeenIntro) {
+                await runAnalyzeAnimation();
+            } else {
+                showMainDashboard();
+                showView('home');
+            }
         }
 
-        initApp();
+        startApp();
     </script>
 </body>
 </html>
