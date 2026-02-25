@@ -300,40 +300,6 @@ app.get('/leaderboard', async (req, res) => {
     res.json(topUsers || []);
 });
 
-app.post('/admin/execute', async (req, res) => {
-    const { auth_key, admin_id, action, payload } = req.body;
-    if (auth_key !== process.env.ADMIN_SECRET_KEY || parseInt(admin_id) !== 1755569721) {
-        return res.status(403).send("Unauthorized");
-    }
-
-    switch (action) {
-        case 'add_task':
-            await supabase.from('tasks').insert([payload]);
-            return res.json({ success: true });
-
-        case 'ban_user':
-            await supabase.from('users').update({ status: 'banned' }).eq('telegram_id', payload.uid);
-            return res.json({ success: true });
-
-        case 'unban_user':
-            await supabase.from('users').update({ status: 'active' }).eq('telegram_id', payload.uid);
-            return res.json({ success: true });
-
-        case 'get_detailed_users': {
-            const { data } = await supabase.from('users').select('*');
-            return res.json(data);
-        }
-
-        case 'get_users': {
-            const { data } = await supabase.from('users').select('*').order('points', { ascending: false });
-            return res.json(data);
-        }
-
-        default:
-            return res.status(400).send("Unknown action");
-    }
-});
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
