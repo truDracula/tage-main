@@ -55,9 +55,19 @@
             </div>
         </div>
 
+        <div id="view-referrals" class="view-section hidden">
+            <h3 class="font-black text-2xl uppercase mb-6">Referrals</h3>
+            <div class="glass p-5 rounded-2xl space-y-4">
+                <p class="text-sm text-zinc-300">Share your link and earn 20% commission.</p>
+                <p id="ref-link-display" class="text-xs text-blue-400 break-all">Loading...</p>
+                <button onclick="copyLink()" class="w-full bg-blue-600 py-3 rounded-xl font-black uppercase">Copy Link</button>
+            </div>
+        </div>
+
         <div class="fixed bottom-0 left-0 w-full bg-black border-t border-white/10 flex justify-around p-6">
             <button onclick="showView('home')" id="nav-home" class="nav-active font-black uppercase text-xs">Home</button>
             <button onclick="showView('tasks')" id="nav-tasks" class="font-black uppercase text-xs text-zinc-500">Tasks</button>
+            <button onclick="showView('referrals')" id="nav-referrals" class="font-black uppercase text-xs text-zinc-500">Referrals</button>
         </div>
     </div>
 
@@ -71,16 +81,22 @@
         async function fetchUserData() {
             const userId = tg.initDataUnsafe.user?.id || 12345;
             const username = tg.initDataUnsafe.user?.username || "Guest";
+            const referrerId = tg.initDataUnsafe.start_param || null;
 
-            const res = await fetch(`${BACKEND_URL}/auth`, {
+            const registerRes = await fetch(`${BACKEND_URL}/register`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ userId, username })
+                body: JSON.stringify({
+                    telegram_id: userId,
+                    username,
+                    referrer_id: referrerId
+                })
             });
-            const data = await res.json();
+            const data = await registerRes.json();
             user = data;
             currentUser.id = data.telegram_id || userId;
             updateUI(user);
+            initReferralPage();
         }
 
         function getTodayAdCount(userData) {
@@ -128,6 +144,7 @@
             document.getElementById('view-' + name).classList.remove('hidden');
             document.getElementById('nav-home').classList.toggle('nav-active', name === 'home');
             document.getElementById('nav-tasks').classList.toggle('nav-active', name === 'tasks');
+            document.getElementById('nav-referrals').classList.toggle('nav-active', name === 'referrals');
         }
 
         async function completeTask() {
@@ -209,6 +226,18 @@
                 btn.style.backgroundColor = "#6c757d";
                 btn.style.cursor = "not-allowed";
             }
+        }
+
+        function initReferralPage() {
+            const userId = currentUser.id;
+            const refLink = `https://t.me/TageTon_bot/app?startapp=${userId}`;
+            document.getElementById('ref-link-display').innerText = refLink;
+        }
+
+        function copyLink() {
+            const link = document.getElementById('ref-link-display').innerText;
+            navigator.clipboard.writeText(link);
+            alert("Referral link copied! You'll earn 20% from your friends' tasks.");
         }
 
         async function startApp() {

@@ -9,6 +9,71 @@ app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+async function giveCommission(userId, amount) {
+    const { data: user } = await supabase
+        .from('users')
+        .select('referred_by')
+        .eq('telegram_id', userId)
+        .single();
+
+    if (user && user.referred_by) {
+        const commission = Math.floor(amount * 0.20);
+        if (commission > 0) {
+            await supabase.rpc('increment_points', {
+                user_id: user.referred_by,
+                amount: commission
+            });
+        }
+    }
+}
+
+app.post('/register', async (req, res) => {
+    const { telegram_id, username, referrer_id } = req.body;
+    const referredBy =
+        referrer_id && String(referrer_id) !== String(telegram_id) ? referrer_id : null;
+
+    const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegram_id)
+        .single();
+
+    if (existingUser) {
+        const updatePayload = { username };
+        if (!existingUser.referred_by && referredBy) {
+            updatePayload.referred_by = referredBy;
+        }
+
+        const { data: updatedUser, error: updateError } = await supabase
+            .from('users')
+            .update(updatePayload)
+            .eq('telegram_id', telegram_id)
+            .select()
+            .single();
+
+        if (updateError) return res.status(500).json(updateError);
+        return res.json(updatedUser);
+    }
+
+    const { data: newUser, error } = await supabase
+        .from('users')
+        .insert({
+            telegram_id,
+            username,
+            referred_by: referredBy,
+            points: 0,
+            account_age_days: 0,
+            completed_tasks: [],
+            ads_watched_today: 0,
+            last_ad_date: null
+        })
+        .select()
+        .single();
+
+    if (error) return res.status(500).json(error);
+    res.json(newUser);
+});
+
 app.post('/auth', async (req, res) => {
     const { userId, username } = req.body;
     
@@ -65,6 +130,7 @@ app.post('/complete-task', async (req, res) => {
 
     if (updateError) return res.status(500).json(updateError);
 
+    await giveCommission(telegram_id, 1000);
     res.json({ success: true, message: "Points added and task recorded!" });
 });
 
@@ -102,6 +168,7 @@ app.post('/watch-ad', async (req, res) => {
 
     if (error) return res.status(500).json(error);
 
+    await giveCommission(telegram_id, 500);
     res.json({ success: true, newPoints, watchedToday });
 });
 
