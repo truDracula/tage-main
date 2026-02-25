@@ -300,73 +300,95 @@ app.get('/leaderboard', async (req, res) => {
     res.json(topUsers || []);
 });
 
+app.get('/get-tasks', async (req, res) => {
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('id', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+});
+
 app.post('/admin/execute', async (req, res) => {
     const { auth_key, admin_id, action, payload } = req.body;
 
     if (auth_key !== process.env.ADMIN_SECRET_KEY || parseInt(admin_id) !== 1755569721) {
-        return res.status(403).send("Unauthorized");
+        return res.status(403).json({ error: "Unauthorized" });
     }
 
-    switch (action) {
-        case 'add_task':
-            await supabase.from('tasks').insert([payload]);
-            return res.json({ success: true });
-
-        case 'ban_user':
-            await supabase.from('users').update({ status: 'banned' }).eq('telegram_id', payload.uid);
-            return res.json({ success: true });
-
-        case 'unban_user':
-            await supabase.from('users').update({ status: 'active' }).eq('telegram_id', payload.uid);
-            return res.json({ success: true });
-
-        case 'get_detailed_users': {
-            const { data } = await supabase.from('users').select('*');
-            return res.json(data);
-        }
-
-        case 'get_users': {
-            const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .order('points', { ascending: false });
-            if (error) return res.status(500).json(error);
-            return res.json(data || []);
-        }
-
-        case 'broadcast': {
-            const message = payload?.message;
-            if (!message) return res.status(400).json({ error: "Missing message" });
-            if (!process.env.TELEGRAM_BOT_TOKEN) {
-                return res.status(500).json({ error: "Missing TELEGRAM_BOT_TOKEN" });
+    try {
+        switch (action) {
+            case 'add_task': {
+                const { data: taskData, error: taskError } = await supabase
+                    .from('tasks')
+                    .insert([{
+                        title: payload.title,
+                        link: payload.link,
+                        points: parseInt(payload.points),
+                        category: payload.category
+                    }]);
+                if (taskError) throw taskError;
+                return res.json({ success: true, message: "Task Published!", data: taskData });
             }
 
-            const { data: users, error } = await supabase
-                .from('users')
-                .select('telegram_id');
-            if (error) return res.status(500).json(error);
-
-            let successCount = 0;
-            for (const u of users || []) {
-                if (!u.telegram_id) continue;
-                try {
-                    const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: u.telegram_id,
-                            text: message
-                        })
-                    });
-                    if (r.ok) successCount++;
-                } catch (_) {}
+            case 'get_users': {
+                const { data: users, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .order('points', { ascending: false });
+                if (userError) throw userError;
+                return res.json({ success: true, data: users });
             }
 
-            return res.json({ success: true, successCount });
-        }
+            case 'get_detailed_users': {
+                const { data, error } = await supabase.from('users').select('*');
+                if (error) throw error;
+                return res.json({ success: true, data });
+            }
 
-        default:
-            return res.status(400).send("Unknown action");
+            case 'ban_user':
+                await supabase.from('users').update({ is_banned: true, status: 'banned' }).eq('telegram_id', payload.uid);
+                return res.json({ success: true });
+
+            case 'unban_user':
+                await supabase.from('users').update({ is_banned: false, status: 'active' }).eq('telegram_id', payload.uid);
+                return res.json({ success: true });
+
+            case 'broadcast': {
+                const message = payload?.message;
+                if (!message) return res.status(400).json({ error: "Missing message" });
+                if (!process.env.TELEGRAM_BOT_TOKEN) {
+                    return res.status(500).json({ error: "Missing TELEGRAM_BOT_TOKEN" });
+                }
+
+                const { data: users, error } = await supabase.from('users').select('telegram_id');
+                if (error) throw error;
+
+                let successCount = 0;
+                for (const u of users || []) {
+                    if (!u.telegram_id) continue;
+                    try {
+                        const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                chat_id: u.telegram_id,
+                                text: message
+                            })
+                        });
+                        if (r.ok) successCount++;
+                    } catch (_) {}
+                }
+
+                return res.json({ success: true, successCount });
+            }
+
+            default:
+                return res.status(400).json({ error: "Invalid Action" });
+        }
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
     }
 });
 

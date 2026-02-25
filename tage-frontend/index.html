@@ -17,7 +17,6 @@
         .tab.active { background: #2563eb; color: #fff; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        #preloader { position: fixed; inset: 0; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.25s ease; }
         .loader-spin { width: 40px; height: 40px; border: 4px solid #1e293b; border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .tabs-container { display: flex; gap: 10px; margin-bottom: 20px; background: #1e293b; padding: 5px; border-radius: 12px; }
@@ -28,12 +27,18 @@
         .lb-rank { font-weight: 800; color: #38bdf8; width: 30px; }
         .lb-name { font-weight: 600; color: white; }
         .lb-points { color: #38bdf8; font-weight: 700; }
+        .task-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .task-info h4 { margin: 0 0 4px 0; font-weight: 700; }
+        .task-info p { margin: 0; color: #38bdf8; font-size: 12px; }
     </style>
 </head>
 <body class="p-6">
-    <div id="preloader">
-        <div class="loader-spin"></div>
-        <p style="color: #38bdf8; margin-top: 15px; font-weight: bold;">SYNCING WITH TELEGRAM...</p>
+    <div id="loading-screen" style="position: fixed; inset: 0; background: #0f172a; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <img src="assets/loadingimage.png" style="width: 150px; margin-bottom: 20px;">
+        <div class="loader-bar" style="width: 60%; height: 4px; background: #1e293b; border-radius: 10px; overflow: hidden;">
+            <div id="progress" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.3s;"></div>
+        </div>
+        <p style="color: #38bdf8; margin-top: 10px; font-family: sans-serif;">INITIALIZING SECURE SESSION...</p>
     </div>
 
     <div id="analyze-screen" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
@@ -87,7 +92,7 @@
             </div>
 
             <div id="partner" class="tab-content">
-                <div class="glass p-5 rounded-2xl text-sm text-zinc-300">Partner offers coming soon.</div>
+                <div id="partner-tasks-container"></div>
             </div>
 
             <div id="completed" class="tab-content">
@@ -230,6 +235,7 @@
             document.getElementById('nav-referrals').classList.toggle('nav-active', name === 'referrals');
             document.getElementById('nav-leaderboard').classList.toggle('nav-active', name === 'leaderboard');
             if (name === 'leaderboard') loadLeaderboard(currentLBTab);
+            if (name === 'tasks') loadTaskCards();
         }
 
         function switchTab(tabId, evt) {
@@ -266,6 +272,45 @@
                 const error = await response.json();
                 alert(error.error || "Task claim failed");
             }
+        }
+
+        async function handleTaskClick(link, taskId, points) {
+            window.open(link, "_blank");
+
+            const response = await fetch(`${BACKEND_URL}/claim-task`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    initData: tg.initData,
+                    telegram_id: currentUser.id,
+                    task_reward: points
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                user.points = (user.points || 0) + Number(points || 0);
+                updateUI(user);
+                alert("Task reward claimed!");
+            } else {
+                alert(data.error || "Task claim failed");
+            }
+        }
+
+        async function loadTaskCards() {
+            const response = await fetch(`${BACKEND_URL}/get-tasks`);
+            const tasks = await response.json();
+
+            const container = document.getElementById('partner-tasks-container');
+            container.innerHTML = (tasks || []).map(task => `
+                <div class="task-card">
+                    <div class="task-info">
+                        <h4>${task.title}</h4>
+                        <p>+${Number(task.points || 0).toLocaleString()} Points</p>
+                    </div>
+                    <button onclick="handleTaskClick('${task.link}', ${task.id || 0}, ${Number(task.points || 0)})">GO</button>
+                </div>
+            `).join('');
         }
 
         async function watchAd() {
@@ -389,31 +434,14 @@
             }).join('');
         }
 
-        function hidePreloader() {
-            const pre = document.getElementById('preloader');
-            pre.style.opacity = '0';
-            setTimeout(() => { pre.style.display = 'none'; }, 250);
-        }
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
 
-        async function startApp() {
-            const tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand();
-
-            if (!tg.initDataUnsafe.user) {
-                setTimeout(startApp, 1000);
-                return;
-            }
-
-            const telegramUser = tg.initDataUnsafe.user;
-
+        async function checkUserStatus(uid, username) {
             const response = await fetch(`${BACKEND_URL}/user-init`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    uid: telegramUser.id,
-                    username: telegramUser.username || telegramUser.first_name
-                })
+                body: JSON.stringify({ uid, username })
             });
             const userData = await response.json();
 
@@ -423,16 +451,11 @@
             }
 
             user = userData;
-            currentUser.id = userData.telegram_id || telegramUser.id;
+            currentUser.id = userData.telegram_id || uid;
             currentUser.refCount = currentUser.refCount || 0;
-            localStorage.setItem('tage_user', JSON.stringify({
-                username: telegramUser.username || telegramUser.first_name || "Guest",
-                id: telegramUser.id
-            }));
-
-            document.getElementById('preloader').style.display = 'none';
-            document.getElementById('username-display').innerText = "@" + (telegramUser.username || telegramUser.first_name || "Guest");
-            document.getElementById('uid-display').innerText = "UID: " + telegramUser.id;
+            updateUI(user);
+            initReferralPage();
+            loadTaskCards();
 
             const hasSeenIntro = localStorage.getItem('isExistingUser');
             if (userData.isNewUser && !hasSeenIntro) {
@@ -441,6 +464,40 @@
                 showMainDashboard();
                 showView('home');
             }
+        }
+
+        function finishLoading(user) {
+            document.getElementById('username-display').innerText = `@${user.username || user.first_name}`;
+            document.getElementById('uid-display').innerText = `UID: ${user.id}`;
+
+            const screen = document.getElementById('loading-screen');
+            screen.style.opacity = '0';
+            setTimeout(() => {
+                screen.style.display = 'none';
+                checkUserStatus(user.id, user.username || user.first_name);
+            }, 500);
+        }
+
+        function startApp() {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+
+            let checkCount = 0;
+            const checkInterval = setInterval(() => {
+                const user = tg.initDataUnsafe?.user;
+                const progress = document.getElementById('progress');
+
+                checkCount++;
+                progress.style.width = (checkCount * 10) + "%";
+
+                if (user) {
+                    clearInterval(checkInterval);
+                    finishLoading(user);
+                } else if (checkCount >= 20) {
+                    clearInterval(checkInterval);
+                    alert("Telegram connection timeout. Please restart.");
+                }
+            }, 500);
         }
 
         startApp();
