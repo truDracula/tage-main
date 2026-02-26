@@ -37,6 +37,7 @@
         .nav-tabs .tab { background: none !important; border: none !important; outline: none !important; color: #64748b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
         .nav-tabs .tab.active { color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
         .watch-btn { background: #2563eb; color: white; padding: 15px 40px; border-radius: 12px; font-size: 18px; font-weight: 800; border: none; width: 80%; }
+        .spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid white; border-radius: 50%; display: inline-block; animation: spin 0.8s linear infinite; }
     </style>
 </head>
 <body class="p-6">
@@ -70,6 +71,14 @@
             <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="balance-display">0</div>
         </div>
 
+        <div id="league-container" style="padding: 20px; text-align: center; background: #000;">
+            <div id="league-name" style="font-weight: 900; letter-spacing: 2px; font-size: 22px;">BRONZE LEAGUE</div>
+            <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 10px; margin-top: 10px; overflow: hidden;">
+                <div id="league-progress-fill" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.5s ease;"></div>
+            </div>
+            <div id="next-league-text" style="font-size: 10px; color: #64748b; margin-top: 5px;">50,000 BP TO SILVER</div>
+        </div>
+
         <div id="view-home" class="view-section">
             <div class="glass p-10 rounded-[2rem] text-center">
                 <h3 class="font-black uppercase mb-4">Daily Check-in</h3>
@@ -78,7 +87,7 @@
             </div>
         </div>
 
-        <div id="view-tasks" class="view-section hidden">
+        <div id="tasks-page" class="view-section hidden" style="display:none; height: 70vh; flex-direction: column;">
             <h3 class="font-black text-2xl uppercase mb-6">Tasks</h3>
             <div class="tabs-header">
                 <div class="tab active" onclick="switchTab('today', event)">Today</div>
@@ -130,13 +139,17 @@
             <div id="milestone-area"></div>
         </div>
 
-        <div id="view-leaderboard" class="view-section hidden">
+        <div id="leaderboard-page" class="view-section hidden" style="display:none; padding: 20px;">
             <h2 style="text-align: center;" class="font-black text-2xl mb-6">LEADERBOARD</h2>
             <div class="lb-tabs" style="display: flex; justify-content: center; gap: 30px; margin-bottom: 20px;">
                 <span onclick="switchLB('total')" id="lb-total-tab" class="lb-link active">TOTAL POINTS</span>
                 <span onclick="switchLB('refs')" id="lb-ref-tab" class="lb-link">TOP REF</span>
             </div>
             <div id="lb-list"></div>
+            <div id="sticky-rank" style="position: fixed; bottom: 80px; left:0; right:0; background:#1e293b; padding:15px; display:none; justify-content:space-between; border-top: 2px solid #38bdf8;">
+                <span id="my-rank">#5,000 YOU</span>
+                <span id="my-points" style="color:#38bdf8;">0 BP</span>
+            </div>
             <div class="glass p-5 rounded-2xl mt-4">
                 <h3 class="font-black uppercase mb-3">Referral Milestones</h3>
                 <div id="milestone-list"></div>
@@ -150,7 +163,7 @@
             <div class="tab" onclick="showPage('tasks')">
                 <span style="font-size: 20px;"></span><br>Tasks
             </div>
-            <div class="tab" onclick="showPage('referrals')">
+            <div class="tab" onclick="showPage('refs')">
                 <span style="font-size: 20px;"></span><br>Refs
             </div>
             <div class="tab" onclick="showPage('leaderboard')">
@@ -168,6 +181,14 @@
             { type: 'friends', goal: 10, reward: 25000 },
             { type: 'friends', goal: 50, reward: 100000 },
             { type: 'friends', goal: 1000, reward: 1000000 }
+        ];
+        const LEAGUES = [
+            { name: "BRONZE", min: 0, max: 50000, color: "#b45309" },
+            { name: "SILVER", min: 50001, max: 250000, color: "#94a3b8" },
+            { name: "GOLD", min: 250001, max: 1000000, color: "#fbbf24" },
+            { name: "PLATINUM", min: 1000001, max: 5000000, color: "#a78bfa" },
+            { name: "DIAMOND", min: 5000001, max: 20000000, color: "#38bdf8" },
+            { name: "MASTER", min: 20000001, max: Infinity, color: "#f87171" }
         ];
         let user = { id: 0, username: "Guest", points: 0 };
         let currentUser = { id: 0, refCount: 0 };
@@ -268,8 +289,22 @@
         }
 
         function showView(name) {
-            document.querySelectorAll('.view-section').forEach(v => v.classList.add('hidden'));
-            document.getElementById('view-' + name).classList.remove('hidden');
+            const pageMap = {
+                home: 'view-home',
+                tasks: 'tasks-page',
+                referrals: 'view-referrals',
+                leaderboard: 'leaderboard-page'
+            };
+            const pageId = pageMap[name] || pageMap.home;
+
+            document.querySelectorAll('.view-section').forEach(v => {
+                v.classList.add('hidden');
+                if (v.id === 'tasks-page' || v.id === 'leaderboard-page') v.style.display = 'none';
+            });
+            const target = document.getElementById(pageId);
+            target.classList.remove('hidden');
+            if (pageId === 'tasks-page' || pageId === 'leaderboard-page') target.style.display = 'block';
+
             const navItems = document.querySelectorAll('.nav-tabs .tab');
             navItems.forEach((item) => item.classList.remove('active'));
             const order = ['home', 'tasks', 'referrals', 'leaderboard'];
@@ -280,6 +315,7 @@
         }
 
         function showPage(name) {
+            if (name === 'refs') name = 'referrals';
             showView(name);
         }
 
@@ -428,6 +464,7 @@
             const completedList = document.getElementById('completed-list');
 
             if (pointsEl) pointsEl.innerText = formatPoints(userData.points || 0);
+            updateLeague(userData.points || 0);
             if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
 
             if (btn && userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
@@ -476,6 +513,7 @@
             const container = document.getElementById('lb-list');
             if (!Array.isArray(data) || !data.length) {
                 container.innerHTML = '<div class="lb-card"><span class="lb-name">No users yet.</span></div>';
+                document.getElementById('sticky-rank').style.display = 'none';
                 return;
             }
 
@@ -488,6 +526,9 @@
                     <span class="lb-points">${type === 'total' ? formatPoints(u.points || 0) : `${u.ref_count || 0} Refs`}</span>
                 </div>
             `).join('');
+            document.getElementById('sticky-rank').style.display = 'flex';
+            document.getElementById('my-rank').innerText = '#YOU';
+            document.getElementById('my-points').innerText = `${formatPoints(user.points || 0)} BP`;
         }
 
         function renderMilestones(refCount) {
@@ -532,6 +573,28 @@
                 `;
             }).join('');
             document.getElementById('milestone-area').innerHTML = html;
+        }
+
+        function updateLeague(points) {
+            const current = LEAGUES.find(l => points <= l.max) || LEAGUES[LEAGUES.length - 1];
+            const next = LEAGUES[LEAGUES.indexOf(current) + 1];
+
+            const leagueNameEl = document.getElementById('league-name');
+            const fillEl = document.getElementById('league-progress-fill');
+            const nextEl = document.getElementById('next-league-text');
+            if (!leagueNameEl || !fillEl || !nextEl) return;
+
+            leagueNameEl.innerText = `${current.name} LEAGUE`;
+            leagueNameEl.style.color = current.color;
+
+            if (next && Number.isFinite(current.max)) {
+                const progress = ((points - current.min) / (current.max - current.min)) * 100;
+                fillEl.style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+                nextEl.innerText = `${Math.max(0, current.max - points).toLocaleString('en-US')} BP TO ${next.name}`;
+            } else {
+                fillEl.style.width = "100%";
+                nextEl.innerText = "MAX LEAGUE REACHED";
+            }
         }
 
         window.Telegram.WebApp.ready();
