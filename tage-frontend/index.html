@@ -374,7 +374,6 @@
             }
 
             if (type === 'task') {
-                updateUIPoints(userCurrentPoints + Number(reward || 0));
                 const card = document.getElementById(`task-card-${id}`);
                 if (card) card.style.display = 'none';
             }
@@ -451,7 +450,12 @@
                 btn.innerText = "CLAIMED ✓";
                 btn.style.background = "#059669";
                 btn.disabled = true;
-                await recordAction('task', taskId, Number(points || 0));
+                const recorded = await recordAction('task', taskId, Number(points || 0));
+                if (recorded) {
+                    await initializeUser();
+                    loadLeaderboard('total');
+                    alert("Points saved permanently!");
+                }
             } else {
                 const err = await res.json().catch(() => ({}));
                 btn.innerText = "CLAIM FAILED";
@@ -685,7 +689,7 @@
 
             if (userData.status === 'banned') {
                 document.body.innerHTML = "<h1>YOUR ACCOUNT IS BANNED</h1>";
-                return;
+                return userData;
             }
 
             user = userData;
@@ -699,6 +703,7 @@
 
             showMainDashboard();
             showView('home');
+            return userData;
         }
 
         function runCleanAnalysis() {
@@ -712,19 +717,32 @@
             ];
 
             let current = 0;
-            function process() {
-                if (current < steps.length) {
-                    statusText.innerText = steps[current].msg;
-                    bar.style.width = ((current + 1) * 25) + "%";
-                    setTimeout(() => { current++; process(); }, steps[current].time);
-                } else {
-                    const screen = document.getElementById('loading-screen');
-                    screen.style.opacity = '0';
-                    screen.style.transition = 'opacity 0.5s ease';
-                    setTimeout(() => { screen.style.display = 'none'; }, 500);
+            return new Promise((resolve) => {
+                function process() {
+                    if (current < steps.length) {
+                        statusText.innerText = steps[current].msg;
+                        bar.style.width = ((current + 1) * 25) + "%";
+                        setTimeout(() => { current++; process(); }, steps[current].time);
+                    } else {
+                        const screen = document.getElementById('loading-screen');
+                        screen.style.opacity = '0';
+                        screen.style.transition = 'opacity 0.5s ease';
+                        setTimeout(() => {
+                            screen.style.display = 'none';
+                            resolve();
+                        }, 500);
+                    }
                 }
-            }
-            process();
+                process();
+            });
+        }
+
+        function hideLoadingScreen() {
+            const screen = document.getElementById('loading-screen');
+            if (!screen) return;
+            screen.style.opacity = '0';
+            screen.style.transition = 'opacity 0.2s ease';
+            setTimeout(() => { screen.style.display = 'none'; }, 200);
         }
 
         function startApp() {
@@ -741,8 +759,14 @@
                     pendingTelegramUser = user;
                     document.getElementById('username-display').innerText = `@${user.username || user.first_name}`;
                     document.getElementById('uid-display').innerText = `UID: ${user.id}`;
-                    checkUserStatus(user.id, user.username || user.first_name);
-                    runCleanAnalysis();
+                    checkUserStatus(user.id, user.username || user.first_name).then((userData) => {
+                        if (!userData || userData.status === 'banned') return;
+                        if (userData.isNewUser) {
+                            runCleanAnalysis();
+                        } else {
+                            hideLoadingScreen();
+                        }
+                    });
                 } else if (checkCount >= 20) {
                     clearInterval(checkInterval);
                     alert("Telegram connection timeout. Please restart.");
