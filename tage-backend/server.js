@@ -20,6 +20,7 @@ app.get('/health', async (_req, res) => {
     const hasSupabaseKey = Boolean(process.env.SUPABASE_KEY);
     const hasAdminSecret = Boolean(process.env.ADMIN_SECRET_KEY);
     const hasTelegramToken = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    const botPollingEnabled = process.env.ENABLE_BOT_POLLING === 'true';
 
     let supabaseReachable = false;
     if (hasSupabaseUrl && hasSupabaseKey) {
@@ -33,7 +34,8 @@ app.get('/health', async (_req, res) => {
             supabase_url: hasSupabaseUrl,
             supabase_key: hasSupabaseKey,
             admin_secret_key: hasAdminSecret,
-            telegram_bot_token: hasTelegramToken
+            telegram_bot_token: hasTelegramToken,
+            enable_bot_polling: botPollingEnabled
         },
         supabase_reachable: supabaseReachable
     });
@@ -41,8 +43,12 @@ app.get('/health', async (_req, res) => {
 
 try {
     const TelegramBot = require('node-telegram-bot-api');
-    if (process.env.TELEGRAM_BOT_TOKEN) {
+    const enableBotPolling = process.env.ENABLE_BOT_POLLING === 'true';
+    if (process.env.TELEGRAM_BOT_TOKEN && enableBotPolling) {
         bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+        bot.on('polling_error', (err) => {
+            console.error('[bot polling error]', err?.message || err);
+        });
 
         bot.onText(/\/start/, (msg) => {
             const chatId = msg.chat.id;
@@ -65,6 +71,8 @@ Click the button below to launch the app!
                 }
             });
         });
+    } else if (process.env.TELEGRAM_BOT_TOKEN && !enableBotPolling) {
+        console.log('Bot polling disabled (ENABLE_BOT_POLLING != true).');
     }
 } catch (e) {
     // Bot is optional in this backend process.
