@@ -409,15 +409,20 @@
         async function loadTaskCards() {
             const response = await fetch(`${BACKEND_URL}/get-tasks?uid=${currentUser.id}`);
             const tasks = await response.json();
+            const completedTaskIds = (user.completed_tasks || []).map((t) => Number(t));
+            renderFilteredTasks(tasks || [], completedTaskIds);
+        }
 
-            const container = document.getElementById('partner-tasks-container');
-            container.innerHTML = (tasks || []).map(task => `
+        function renderFilteredTasks(allTasks, completedTaskIds) {
+            const container = document.getElementById('task-list-container') || document.getElementById('partner-tasks-container');
+            const visibleTasks = (allTasks || []).filter((task) => !completedTaskIds.includes(Number(task.id)));
+            container.innerHTML = visibleTasks.map(task => `
                 <div class="task-card">
                     <div class="task-info">
                         <h4>${task.title}</h4>
-                        <p>+${Number(task.points || 0).toLocaleString()} Points</p>
+                        <p>+${Number(task.points || task.reward || 0).toLocaleString()} $TAGE</p>
                     </div>
-                    <button id="task-btn-${task.id || 0}" ${task.isClaimed ? 'disabled' : ''} onclick="startTask(${task.id || 0}, '${task.link}', ${Number(task.points || 0)})">${task.isClaimed ? 'CLAIMED' : 'GO'}</button>
+                    <button id="task-btn-${task.id || 0}" onclick="startTask(${task.id || 0}, '${task.link}', ${Number(task.points || task.reward || 0)})">GO</button>
                 </div>
             `).join('');
         }
@@ -534,7 +539,9 @@
             `).join('');
 
             const sticky = document.getElementById('sticky-rank');
-            if (Number(data?.userRank) > 100) {
+            const myId = Number(tg?.initDataUnsafe?.user?.id || currentUser.id || 0);
+            const amIInTop100 = topList.some((entry) => Number(entry.telegram_id || entry.id || 0) === myId);
+            if (!amIInTop100 && Number(data?.userRank) > 100) {
                 sticky.style.display = 'flex';
                 document.getElementById('my-rank').innerText = `#${data.userRank} YOU`;
                 document.getElementById('my-points').innerText = `${formatPoints(data.userPoints || user.points || 0)} $TAGE`;

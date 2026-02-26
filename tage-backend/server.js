@@ -389,6 +389,7 @@ app.get('/leaderboard', async (req, res) => {
 
         const ranking = (users || [])
             .map((u) => ({
+                telegram_id: u.telegram_id,
                 username: u.username,
                 ref_count: counts[u.telegram_id] || 0
             }))
@@ -400,7 +401,7 @@ app.get('/leaderboard', async (req, res) => {
 
     const { data: topUsers, error } = await supabase
         .from('users')
-        .select('username, points')
+        .select('telegram_id, username, points')
         .order('points', { ascending: false })
         .limit(50);
 
