@@ -196,7 +196,7 @@
         function formatPoints(value) {
             const n = Number(value) || 0;
             const compact = (num, suffix) =>
-                `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(num)}${suffix}`;
+                `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(num).replace('.', ',')}${suffix}`;
             if (n >= 1_000_000_000) return compact(n / 1_000_000_000, 'B');
             if (n >= 1_000_000) return compact(n / 1_000_000, 'M');
             if (n >= 1_000) return compact(n / 1_000, 'K');
