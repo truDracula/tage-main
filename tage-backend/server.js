@@ -90,6 +90,22 @@ async function awardPoints(userId, amount) {
     }
 }
 
+async function recordAdWatch(userId, reward) {
+    const { error } = await supabase
+        .from('ad_watches')
+        .insert([{
+            user_id: userId,
+            reward,
+            watched_at: new Date().toISOString()
+        }]);
+
+    if (error) {
+        console.error("Supabase Error (ad_watches):", error.message);
+        return error;
+    }
+    return null;
+}
+
 async function upsertUser(telegram_id, username, referrer_id) {
     const referredBy =
         referrer_id && String(referrer_id) !== String(telegram_id) ? referrer_id : null;
@@ -329,6 +345,8 @@ app.post('/watch-ad', async (req, res) => {
         .eq('telegram_id', telegram_id);
 
     if (error) return res.status(500).json(error);
+    const adWatchError = await recordAdWatch(telegram_id, 1000);
+    if (adWatchError) return res.status(500).json({ error: `DB Error: ${adWatchError.message}` });
 
     res.json({ success: true, newPoints: user.points + 1000, watchedToday });
 });
@@ -369,6 +387,8 @@ app.post('/add-ad-reward', async (req, res) => {
         })
         .eq('telegram_id', telegram_id);
     if (error) return res.status(500).json(error);
+    const adWatchError = await recordAdWatch(telegram_id, rewardAmount);
+    if (adWatchError) return res.status(500).json({ error: `DB Error: ${adWatchError.message}` });
 
     res.json({ success: true, newPoints: user.points + rewardAmount, watchedToday });
 });
