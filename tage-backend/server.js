@@ -335,7 +335,7 @@ app.post('/watch-ad', async (req, res) => {
 });
 
 app.get('/leaderboard', async (req, res) => {
-    const type = req.query.type || 'total';
+    const type = req.query.sort || req.query.type || 'total';
 
     if (type === 'refs') {
         const { data: users, error } = await supabase
@@ -451,6 +451,46 @@ app.post('/admin/execute', async (req, res) => {
             case 'unban_user':
                 await supabase.from('users').update({ is_banned: false, status: 'active' }).eq('telegram_id', payload.uid);
                 return res.json({ success: true });
+
+            case 'claim_milestone': {
+                const { uid, milestone_key } = payload;
+
+                const { data: milestoneUser, error: milestoneUserError } = await supabase
+                    .from('users')
+                    .select('referral_count')
+                    .eq('telegram_id', uid)
+                    .single();
+                if (milestoneUserError) throw milestoneUserError;
+
+                const requirements = { ref_5: 5, ref_25: 25, ref_100: 100 };
+                const rewards = { ref_5: 10000, ref_25: 100000, ref_100: 1000000 };
+                const needed = requirements[milestone_key];
+                if (!needed) return res.status(400).json({ success: false, error: "Invalid milestone key" });
+
+                if (Number(milestoneUser?.referral_count || 0) < needed) {
+                    return res.status(400).json({ success: false, error: "Milestone not reached yet!" });
+                }
+
+                const { data: existingClaim } = await supabase
+                    .from('milestones')
+                    .select('id')
+                    .eq('telegram_id', uid)
+                    .eq('milestone_key', milestone_key)
+                    .single();
+                if (existingClaim) {
+                    return res.status(400).json({ success: false, error: "Milestone already claimed" });
+                }
+
+                const { error: claimInsertError } = await supabase.from('milestones').insert([{
+                    telegram_id: uid,
+                    milestone_key,
+                    claimed_at: new Date().toISOString()
+                }]);
+                if (claimInsertError) throw claimInsertError;
+
+                await awardPoints(uid, rewards[milestone_key]);
+                return res.json({ success: true });
+            }
 
             case 'broadcast': {
                 const message = payload?.message;
