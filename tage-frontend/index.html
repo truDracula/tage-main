@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>$TAGE</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        body { background-color: #000; color: white; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        .app-container { display: flex; flex-direction: column; height: 100vh; padding: 20px; box-sizing: border-box; }
         .glass { background: rgba(20,20,20,0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .nav-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
         .hidden { display: none; }
@@ -30,6 +31,7 @@
         .task-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .task-info h4 { margin: 0 0 4px 0; font-weight: 700; }
         .task-info p { margin: 0; color: #38bdf8; font-size: 12px; }
+        .nav-tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: #111; padding: 10px 0; }
     </style>
 </head>
 <body class="p-6">
@@ -38,7 +40,7 @@
         <div class="loader-bar" style="width: 60%; height: 4px; background: #1e293b; border-radius: 10px; overflow: hidden;">
             <div id="progress" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.3s;"></div>
         </div>
-        <p style="color: #38bdf8; margin-top: 10px; font-family: sans-serif;">INITIALIZING SECURE SESSION...</p>
+        <p id="loading-text" style="color: #38bdf8; margin-top: 10px; font-family: sans-serif;">INITIALIZING SECURE SESSION...</p>
     </div>
 
     <div id="analyze-screen" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-10 text-center">
@@ -53,7 +55,7 @@
         </div>
     </div>
 
-        <div id="main-dashboard" class="hidden">
+        <div id="main-dashboard" class="hidden app-container">
         <div class="flex justify-between items-center mb-10">
             <div>
                 <p id="username-display" class="font-black text-xl">@Guest</p>
@@ -122,7 +124,7 @@
             </div>
         </div>
 
-        <div class="fixed bottom-0 left-0 w-full bg-black border-t border-white/10 flex justify-around p-6">
+        <div class="fixed bottom-0 left-0 w-full bg-black border-t border-white/10 flex justify-around p-6 nav-tabs">
             <button onclick="showView('home')" id="nav-home" class="nav-active font-black uppercase text-xs">Home</button>
             <button onclick="showView('tasks')" id="nav-tasks" class="font-black uppercase text-xs text-zinc-500">Tasks</button>
             <button onclick="showView('referrals')" id="nav-referrals" class="font-black uppercase text-xs text-zinc-500">Referrals</button>
@@ -478,6 +480,29 @@
             }, 500);
         }
 
+        function startLoadingSequence(user) {
+            const messages = [
+                "Connecting to Telegram...",
+                "Analyzing Account Age...",
+                "Calculating Rewards...",
+                "Finalizing Secure Session..."
+            ];
+            let step = 0;
+            const msgElement = document.getElementById('loading-text');
+            const progress = document.getElementById('progress');
+
+            const interval = setInterval(() => {
+                if (step < messages.length) {
+                    msgElement.innerText = messages[step];
+                    progress.style.width = ((step + 1) * 25) + "%";
+                    step++;
+                } else {
+                    clearInterval(interval);
+                    finishLoading(user);
+                }
+            }, 1200);
+        }
+
         function startApp() {
             const tg = window.Telegram.WebApp;
             tg.ready();
@@ -485,14 +510,11 @@
             let checkCount = 0;
             const checkInterval = setInterval(() => {
                 const user = tg.initDataUnsafe?.user;
-                const progress = document.getElementById('progress');
-
                 checkCount++;
-                progress.style.width = (checkCount * 10) + "%";
 
                 if (user) {
                     clearInterval(checkInterval);
-                    finishLoading(user);
+                    startLoadingSequence(user);
                 } else if (checkCount >= 20) {
                     clearInterval(checkInterval);
                     alert("Telegram connection timeout. Please restart.");

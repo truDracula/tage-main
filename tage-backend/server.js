@@ -14,6 +14,38 @@ app.use(cors({
 app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+let bot = null;
+
+try {
+    const TelegramBot = require('node-telegram-bot-api');
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+        bot.onText(/\/start/, (msg) => {
+            const chatId = msg.chat.id;
+            const welcomeText = `
+*Welcome to Tage App!*
+
+*Earnings:* Watch ads and complete tasks to earn points.
+*Referrals:* Earn 20% commission from your friends!
+*Leagues:* Climb from Newbie to Titan.
+
+Click the button below to launch the app!
+            `;
+
+            bot.sendMessage(chatId, welcomeText, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: "Launch App", web_app: { url: "https://tage-main.vercel.app" } }
+                    ]]
+                }
+            });
+        });
+    }
+} catch (e) {
+    // Bot is optional in this backend process.
+}
 
 function verifyTelegramData(initData) {
     if (!initData || !process.env.TELEGRAM_BOT_TOKEN) return false;
