@@ -308,6 +308,32 @@ app.post('/claim-task', async (req, res) => {
     res.json({ success: true });
 });
 
+app.post('/record-action', async (req, res) => {
+    const { initData, uid, action_type, action_id, reward_amount } = req.body;
+    const userId = Number(uid);
+
+    if (initData && !verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
+    if (!userId || !action_type || action_id === undefined || action_id === null) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const { error } = await supabase
+        .from('completed_actions')
+        .insert([{
+            user_id: userId,
+            action_type: String(action_type),
+            action_id: String(action_id),
+            reward_amount: Number(reward_amount || 0)
+        }]);
+
+    if (error) {
+        return res.status(500).json({ error: `DB Error: ${error.message}` });
+    }
+    res.json({ success: true });
+});
+
 app.post('/watch-ad', async (req, res) => {
     const { initData, telegram_id } = req.body;
     const today = new Date().toISOString().split('T')[0];
