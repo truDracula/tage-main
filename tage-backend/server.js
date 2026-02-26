@@ -351,6 +351,13 @@ app.post('/claim-task', async (req, res) => {
             completed_at: nowIso
         }]);
     if (insertError) return res.status(500).json({ error: insertError.message });
+    // Keep compatibility with projects using completed_tasks for filtering/history.
+    await supabase
+        .from('completed_tasks')
+        .insert([{
+            user_id: userUid,
+            task_id: taskId
+        }]);
 
     let reward = taskReward;
     if ((!reward || reward <= 0) && taskId) {
@@ -528,16 +535,26 @@ app.get('/get-tasks', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     if (!uid) return res.json(allTasks || []);
 
-    // Primary filter source: completed_tasks (Blacksmith schema)
+    // Primary filter source: task_completions (written by /claim-task)
+    const { data: completionsRows, error: completionsError } = await supabase
+        .from('task_completions')
+        .select('task_id')
+        .eq('user_id', uid);
+
+    let completedIds = new Set();
+    if (!completionsError) {
+        completedIds = new Set((completionsRows || []).map((row) => Number(row.task_id)));
+    }
+
+    // Also include completed_tasks for Blacksmith/legacy schemas.
     const { data: completedRows, error: completedError } = await supabase
         .from('completed_tasks')
         .select('task_id')
         .eq('user_id', uid);
 
-    let completedIds = new Set();
     if (!completedError) {
-        completedIds = new Set((completedRows || []).map((row) => Number(row.task_id)));
-    } else {
+        for (const row of (completedRows || [])) completedIds.add(Number(row.task_id));
+    } else if (completionsError) {
         // Fallback for alternate schema
         const { data: finishedActions, error: finishedError } = await supabase
             .from('completed_actions')
@@ -579,7 +596,8 @@ app.get('/user-balance', async (req, res) => {
     }
 
     if (!data) return res.status(404).json({ error: "User not found" });
-    const balance = Number(data.balance ?? data.points ?? 0);
+    // Blacksmith stores score in points. Prefer points over balance.
+    const balance = Number(data.points ?? data.balance ?? 0);
     return res.json({ success: true, balance });
 });
 
