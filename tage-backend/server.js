@@ -76,7 +76,7 @@ async function awardPoints(userId, amount) {
     const { data: user } = await supabase
         .from('users')
         .select('referred_by')
-        .eq('telegram_id', userId)
+        .eq('uid', userId)
         .single();
 
     if (user && user.referred_by) {
@@ -113,7 +113,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
     const { data: existingUser } = await supabase
         .from('users')
         .select('*')
-        .eq('telegram_id', telegram_id)
+        .eq('uid', telegram_id)
         .single();
 
     if (existingUser) {
@@ -125,7 +125,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
         const { data: updatedUser, error: updateError } = await supabase
             .from('users')
             .update(updatePayload)
-            .eq('telegram_id', telegram_id)
+            .eq('uid', telegram_id)
             .select()
             .single();
 
@@ -136,7 +136,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
     const { data: newUser, error } = await supabase
         .from('users')
         .insert({
-            telegram_id,
+            uid: telegram_id,
             username,
             referred_by: referredBy,
             points: 0,
@@ -200,7 +200,7 @@ app.post('/auth', async (req, res) => {
     let { data: user, error } = await supabase
         .from('users')
         .select('*')
-        .eq('telegram_id', userId)
+        .eq('uid', userId)
         .single();
 
     if (!user) {
@@ -209,7 +209,7 @@ app.post('/auth', async (req, res) => {
         const { data: newUser } = await supabase
             .from('users')
             .insert([{ 
-                telegram_id: userId, 
+                uid: userId, 
                 username: username, 
                 points: age * 10,
                 account_age_days: age,
@@ -233,7 +233,7 @@ app.post('/complete-task', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, completed_tasks')
-        .eq('telegram_id', telegram_id)
+        .eq('uid', telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -248,7 +248,7 @@ app.post('/complete-task', async (req, res) => {
         .update({
             completed_tasks: [...tasks, task_id]
         })
-        .eq('telegram_id', telegram_id);
+        .eq('uid', telegram_id);
 
     if (updateError) return res.status(500).json(updateError);
 
@@ -345,7 +345,7 @@ app.post('/watch-ad', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, ads_watched_today, last_ad_date')
-        .eq('telegram_id', telegram_id)
+        .eq('uid', telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -368,7 +368,7 @@ app.post('/watch-ad', async (req, res) => {
             ads_watched_today: watchedToday,
             last_ad_date: today
         })
-        .eq('telegram_id', telegram_id);
+        .eq('uid', telegram_id);
 
     if (error) return res.status(500).json(error);
     const adWatchError = await recordAdWatch(telegram_id, 1000);
@@ -393,7 +393,7 @@ app.post('/add-ad-reward', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, ads_watched_today, last_ad_date')
-        .eq('telegram_id', telegram_id)
+        .eq('uid', telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -411,7 +411,7 @@ app.post('/add-ad-reward', async (req, res) => {
             ads_watched_today: watchedToday,
             last_ad_date: today
         })
-        .eq('telegram_id', telegram_id);
+        .eq('uid', telegram_id);
     if (error) return res.status(500).json(error);
     const adWatchError = await recordAdWatch(telegram_id, rewardAmount);
     if (adWatchError) return res.status(500).json({ error: `DB Error: ${adWatchError.message}` });
@@ -425,7 +425,7 @@ app.get('/leaderboard', async (req, res) => {
     if (type === 'refs') {
         const { data: users, error } = await supabase
             .from('users')
-            .select('telegram_id, username, referred_by');
+            .select('uid, username, referred_by');
         if (error) return res.status(500).json(error);
 
         const counts = {};
@@ -435,9 +435,9 @@ app.get('/leaderboard', async (req, res) => {
 
         const ranking = (users || [])
             .map((u) => ({
-                telegram_id: u.telegram_id,
+                uid: u.uid,
                 username: u.username,
-                ref_count: counts[u.telegram_id] || 0
+                ref_count: counts[u.uid] || 0
             }))
             .sort((a, b) => b.ref_count - a.ref_count)
             .slice(0, 50);
@@ -447,7 +447,7 @@ app.get('/leaderboard', async (req, res) => {
 
     const { data: topUsers, error } = await supabase
         .from('users')
-        .select('telegram_id, username, points')
+        .select('uid, username, points')
         .order('points', { ascending: false })
         .limit(50);
 
@@ -543,11 +543,11 @@ app.post('/admin/execute', async (req, res) => {
             }
 
             case 'ban_user':
-                await supabase.from('users').update({ is_banned: true, status: 'banned' }).eq('telegram_id', payload.uid);
+                await supabase.from('users').update({ is_banned: true, status: 'banned' }).eq('uid', payload.uid);
                 return res.json({ success: true });
 
             case 'unban_user':
-                await supabase.from('users').update({ is_banned: false, status: 'active' }).eq('telegram_id', payload.uid);
+                await supabase.from('users').update({ is_banned: false, status: 'active' }).eq('uid', payload.uid);
                 return res.json({ success: true });
 
             case 'claim_milestone': {
@@ -556,7 +556,7 @@ app.post('/admin/execute', async (req, res) => {
                 const { data: milestoneUser, error: milestoneUserError } = await supabase
                     .from('users')
                     .select('referral_count')
-                    .eq('telegram_id', uid)
+                    .eq('uid', uid)
                     .single();
                 if (milestoneUserError) throw milestoneUserError;
 
@@ -572,7 +572,7 @@ app.post('/admin/execute', async (req, res) => {
                 const { data: existingClaim } = await supabase
                     .from('milestones')
                     .select('id')
-                    .eq('telegram_id', uid)
+                    .eq('uid', uid)
                     .eq('milestone_key', milestone_key)
                     .single();
                 if (existingClaim) {
@@ -580,7 +580,7 @@ app.post('/admin/execute', async (req, res) => {
                 }
 
                 const { error: claimInsertError } = await supabase.from('milestones').insert([{
-                    telegram_id: uid,
+                    uid: uid,
                     milestone_key,
                     claimed_at: new Date().toISOString()
                 }]);
@@ -597,18 +597,18 @@ app.post('/admin/execute', async (req, res) => {
                     return res.status(500).json({ error: "Missing TELEGRAM_BOT_TOKEN" });
                 }
 
-                const { data: users, error } = await supabase.from('users').select('telegram_id');
+                const { data: users, error } = await supabase.from('users').select('uid');
                 if (error) throw error;
 
                 let successCount = 0;
                 for (const u of users || []) {
-                    if (!u.telegram_id) continue;
+                    if (!u.uid) continue;
                     try {
                         const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                chat_id: u.telegram_id,
+                                chat_id: u.uid,
                                 text: message
                             })
                         });

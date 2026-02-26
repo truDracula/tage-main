@@ -241,7 +241,7 @@
             });
             const data = await checkRes.json();
             user = data.user || {};
-            currentUser.id = user.telegram_id || userId;
+            currentUser.id = user.uid || user.telegram_id || userId;
             currentUser.refCount = data.ref_count || 0;
             updateUI(user);
             initReferralPage();
@@ -280,7 +280,7 @@
             document.getElementById('analyze-screen').classList.add('hidden');
             document.getElementById('main-dashboard').classList.remove('hidden');
             document.getElementById('username-display').innerText = "@" + resolveDisplayName();
-            document.getElementById('uid-display').innerText = "UID: " + (user.telegram_id || currentUser.id);
+            document.getElementById('uid-display').innerText = "UID: " + (user.uid || user.telegram_id || currentUser.id);
             updateUI(user);
         }
 
@@ -365,7 +365,7 @@
         }
 
         async function completeTask() {
-            const userId = window.Telegram.WebApp.initDataUnsafe.user?.id || user.telegram_id;
+            const userId = window.Telegram.WebApp.initDataUnsafe.user?.id || user.uid || user.telegram_id;
             const taskId = "twitter_follow";
 
             // 1. Open the X link in a new tab
@@ -579,7 +579,7 @@
 
             const sticky = document.getElementById('sticky-rank');
             const myId = Number(tg?.initDataUnsafe?.user?.id || currentUser.id || 0);
-            const amIInTop100 = topList.some((entry) => Number(entry.telegram_id || entry.id || 0) === myId);
+            const amIInTop100 = topList.some((entry) => Number(entry.uid || entry.telegram_id || entry.id || 0) === myId);
             if (!amIInTop100 && Number(data?.userRank) > 100) {
                 sticky.style.display = 'flex';
                 document.getElementById('my-rank').innerText = `#${data.userRank} YOU`;
@@ -672,7 +672,7 @@
             }
 
             user = userData;
-            currentUser.id = userData.telegram_id || uid;
+            currentUser.id = userData.uid || userData.telegram_id || uid;
             currentUser.refCount = Number(userData.referral_count || userData.ref_count || currentUser.refCount || 0);
             updateUI(user);
             initReferralPage();
