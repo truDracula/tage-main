@@ -13,6 +13,7 @@ app.use(cors({
 app.use(express.json());
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const USER_ID_COLUMN = process.env.USER_ID_COLUMN || 'telegram_id';
 let bot = null;
 
 app.get('/health', async (_req, res) => {
@@ -24,7 +25,7 @@ app.get('/health', async (_req, res) => {
 
     let supabaseReachable = false;
     if (hasSupabaseUrl && hasSupabaseKey) {
-        const { error } = await supabase.from('users').select('uid').limit(1);
+        const { error } = await supabase.from('users').select(USER_ID_COLUMN).limit(1);
         supabaseReachable = !error;
     }
 
@@ -108,7 +109,7 @@ async function awardPoints(userId, amount) {
     const { data: user } = await supabase
         .from('users')
         .select('referred_by')
-        .eq('uid', userId)
+        .eq(USER_ID_COLUMN, userId)
         .single();
 
     if (user && user.referred_by) {
@@ -142,11 +143,28 @@ async function upsertUser(telegram_id, username, referrer_id) {
     const referredBy =
         referrer_id && String(referrer_id) !== String(telegram_id) ? referrer_id : null;
 
-    const { data: existingUser } = await supabase
+    let { data: existingUser } = await supabase
         .from('users')
         .select('*')
-        .eq('uid', telegram_id)
+        .eq(USER_ID_COLUMN, telegram_id)
         .single();
+
+    // Legacy fallback for switching id-column strategy.
+    if (!existingUser && USER_ID_COLUMN !== 'telegram_id') {
+        const legacyLookup = await supabase
+            .from('users')
+            .select('*')
+            .eq('telegram_id', telegram_id)
+            .single();
+        if (!legacyLookup.error && legacyLookup.data) {
+            existingUser = legacyLookup.data;
+            // Migrate legacy row so future lookups use uid directly.
+            await supabase
+                .from('users')
+                .update({ [USER_ID_COLUMN]: telegram_id })
+                .eq('telegram_id', telegram_id);
+        }
+    }
 
     if (existingUser) {
         const updatePayload = { username };
@@ -157,7 +175,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
         const { data: updatedUser, error: updateError } = await supabase
             .from('users')
             .update(updatePayload)
-            .eq('uid', telegram_id)
+            .eq(USER_ID_COLUMN, telegram_id)
             .select()
             .single();
 
@@ -168,7 +186,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
     const { data: newUser, error } = await supabase
         .from('users')
         .insert({
-            uid: telegram_id,
+            [USER_ID_COLUMN]: telegram_id,
             username,
             referred_by: referredBy,
             points: 0,
@@ -232,7 +250,7 @@ app.post('/auth', async (req, res) => {
     let { data: user, error } = await supabase
         .from('users')
         .select('*')
-        .eq('uid', userId)
+        .eq(USER_ID_COLUMN, userId)
         .single();
 
     if (!user) {
@@ -241,7 +259,7 @@ app.post('/auth', async (req, res) => {
         const { data: newUser } = await supabase
             .from('users')
             .insert([{ 
-                uid: userId, 
+                [USER_ID_COLUMN]: userId, 
                 username: username, 
                 points: age * 10,
                 account_age_days: age,
@@ -265,7 +283,7 @@ app.post('/complete-task', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, completed_tasks')
-        .eq('uid', telegram_id)
+        .eq(USER_ID_COLUMN, telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -280,7 +298,7 @@ app.post('/complete-task', async (req, res) => {
         .update({
             completed_tasks: [...tasks, task_id]
         })
-        .eq('uid', telegram_id);
+        .eq(USER_ID_COLUMN, telegram_id);
 
     if (updateError) return res.status(500).json(updateError);
 
@@ -377,7 +395,7 @@ app.post('/watch-ad', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, ads_watched_today, last_ad_date')
-        .eq('uid', telegram_id)
+        .eq(USER_ID_COLUMN, telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -400,7 +418,7 @@ app.post('/watch-ad', async (req, res) => {
             ads_watched_today: watchedToday,
             last_ad_date: today
         })
-        .eq('uid', telegram_id);
+        .eq(USER_ID_COLUMN, telegram_id);
 
     if (error) return res.status(500).json(error);
     const adWatchError = await recordAdWatch(telegram_id, 1000);
@@ -425,7 +443,7 @@ app.post('/add-ad-reward', async (req, res) => {
     const { data: user, error: fetchError } = await supabase
         .from('users')
         .select('points, ads_watched_today, last_ad_date')
-        .eq('uid', telegram_id)
+        .eq(USER_ID_COLUMN, telegram_id)
         .single();
 
     if (fetchError || !user) return res.status(404).json({ error: "User not found" });
@@ -443,7 +461,7 @@ app.post('/add-ad-reward', async (req, res) => {
             ads_watched_today: watchedToday,
             last_ad_date: today
         })
-        .eq('uid', telegram_id);
+        .eq(USER_ID_COLUMN, telegram_id);
     if (error) return res.status(500).json(error);
     const adWatchError = await recordAdWatch(telegram_id, rewardAmount);
     if (adWatchError) return res.status(500).json({ error: `DB Error: ${adWatchError.message}` });
@@ -457,7 +475,7 @@ app.get('/leaderboard', async (req, res) => {
     if (type === 'refs') {
         const { data: users, error } = await supabase
             .from('users')
-            .select('uid, username, referred_by');
+            .select(`${USER_ID_COLUMN}, username, referred_by`);
         if (error) return res.status(500).json(error);
 
         const counts = {};
@@ -467,9 +485,10 @@ app.get('/leaderboard', async (req, res) => {
 
         const ranking = (users || [])
             .map((u) => ({
-                uid: u.uid,
+                uid: u[USER_ID_COLUMN],
+                telegram_id: u[USER_ID_COLUMN],
                 username: u.username,
-                ref_count: counts[u.uid] || 0
+                ref_count: counts[u[USER_ID_COLUMN]] || 0
             }))
             .sort((a, b) => b.ref_count - a.ref_count)
             .slice(0, 50);
@@ -479,7 +498,7 @@ app.get('/leaderboard', async (req, res) => {
 
     const { data: topUsers, error } = await supabase
         .from('users')
-        .select('uid, username, points')
+        .select(`${USER_ID_COLUMN}, username, points`)
         .order('points', { ascending: false })
         .limit(50);
 
@@ -526,13 +545,29 @@ app.get('/user-balance', async (req, res) => {
     const { uid } = req.query;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('uid', uid)
+        .eq(USER_ID_COLUMN, uid)
         .single();
 
-    if (error || !data) return res.status(404).json({ error: "User not found" });
+    // Legacy fallback for switched column names.
+    if ((error || !data) && USER_ID_COLUMN !== 'telegram_id') {
+        const legacyLookup = await supabase
+            .from('users')
+            .select('*')
+            .eq('telegram_id', uid)
+            .single();
+        if (!legacyLookup.error && legacyLookup.data) {
+            data = legacyLookup.data;
+            await supabase
+                .from('users')
+                .update({ [USER_ID_COLUMN]: uid })
+                .eq('telegram_id', uid);
+        }
+    }
+
+    if (!data) return res.status(404).json({ error: "User not found" });
     const balance = Number(data.balance ?? data.points ?? 0);
     return res.json({ success: true, balance });
 });
@@ -603,11 +638,11 @@ app.post('/admin/execute', async (req, res) => {
             }
 
             case 'ban_user':
-                await supabase.from('users').update({ is_banned: true, status: 'banned' }).eq('uid', payload.uid);
+                await supabase.from('users').update({ is_banned: true, status: 'banned' }).eq(USER_ID_COLUMN, payload.uid);
                 return res.json({ success: true });
 
             case 'unban_user':
-                await supabase.from('users').update({ is_banned: false, status: 'active' }).eq('uid', payload.uid);
+                await supabase.from('users').update({ is_banned: false, status: 'active' }).eq(USER_ID_COLUMN, payload.uid);
                 return res.json({ success: true });
 
             case 'claim_milestone': {
@@ -616,7 +651,7 @@ app.post('/admin/execute', async (req, res) => {
                 const { data: milestoneUser, error: milestoneUserError } = await supabase
                     .from('users')
                     .select('referral_count')
-                    .eq('uid', uid)
+                    .eq(USER_ID_COLUMN, uid)
                     .single();
                 if (milestoneUserError) throw milestoneUserError;
 
@@ -632,7 +667,7 @@ app.post('/admin/execute', async (req, res) => {
                 const { data: existingClaim } = await supabase
                     .from('milestones')
                     .select('id')
-                    .eq('uid', uid)
+                    .eq(USER_ID_COLUMN, uid)
                     .eq('milestone_key', milestone_key)
                     .single();
                 if (existingClaim) {
@@ -640,7 +675,7 @@ app.post('/admin/execute', async (req, res) => {
                 }
 
                 const { error: claimInsertError } = await supabase.from('milestones').insert([{
-                    uid: uid,
+                    [USER_ID_COLUMN]: uid,
                     milestone_key,
                     claimed_at: new Date().toISOString()
                 }]);
@@ -657,18 +692,18 @@ app.post('/admin/execute', async (req, res) => {
                     return res.status(500).json({ error: "Missing TELEGRAM_BOT_TOKEN" });
                 }
 
-                const { data: users, error } = await supabase.from('users').select('uid');
+                const { data: users, error } = await supabase.from('users').select(USER_ID_COLUMN);
                 if (error) throw error;
 
                 let successCount = 0;
                 for (const u of users || []) {
-                    if (!u.uid) continue;
+                    if (!u[USER_ID_COLUMN]) continue;
                     try {
                         const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                chat_id: u.uid,
+                                chat_id: u[USER_ID_COLUMN],
                                 text: message
                             })
                         });
