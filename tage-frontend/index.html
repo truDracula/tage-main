@@ -94,15 +94,15 @@
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Like this post</p>
-                        <button id="task-btn-like_post" onclick="startTask('like_post', 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                        <button id="task-btn-9001" onclick="startTask(9001, 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Comment this post</p>
-                        <button id="task-btn-comment_post" onclick="startTask('comment_post', 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                        <button id="task-btn-9002" onclick="startTask(9002, 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Repost this post</p>
-                        <button id="task-btn-repost_post" onclick="startTask('repost_post', 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                        <button id="task-btn-9003" onclick="startTask(9003, 'https://x.com/your_handle/status/1234567890', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Watch an Ad</p>
@@ -353,8 +353,10 @@
                 user.points = (user.points || 0) + Number(points || 0);
                 updateUI(user);
             } else {
+                const err = await res.json().catch(() => ({}));
                 btn.innerText = "CLAIM FAILED";
                 btn.disabled = false;
+                alert(err.error || err.message || "Claim failed. Try again.");
             }
         }
 
