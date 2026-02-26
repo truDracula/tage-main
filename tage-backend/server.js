@@ -318,7 +318,7 @@ app.post('/watch-ad', async (req, res) => {
     }
 
     const watchedToday = count + 1;
-    await awardPoints(telegram_id, 500);
+    await awardPoints(telegram_id, 1000);
 
     const { error } = await supabase
         .from('users')
@@ -330,7 +330,47 @@ app.post('/watch-ad', async (req, res) => {
 
     if (error) return res.status(500).json(error);
 
-    res.json({ success: true, newPoints: user.points + 500, watchedToday });
+    res.json({ success: true, newPoints: user.points + 1000, watchedToday });
+});
+
+app.post('/add-ad-reward', async (req, res) => {
+    const { initData, uid, amount } = req.body;
+    const telegram_id = Number(uid);
+    const rewardAmount = Number(amount || 1000);
+    const today = new Date().toISOString().split('T')[0];
+
+    if (!telegram_id || rewardAmount <= 0) {
+        return res.status(400).json({ error: "Invalid payload" });
+    }
+    if (!verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
+
+    const { data: user, error: fetchError } = await supabase
+        .from('users')
+        .select('points, ads_watched_today, last_ad_date')
+        .eq('telegram_id', telegram_id)
+        .single();
+
+    if (fetchError || !user) return res.status(404).json({ error: "User not found" });
+
+    let count = user.ads_watched_today || 0;
+    if (user.last_ad_date !== today) count = 0;
+    if (count >= 10) return res.status(400).json({ error: "Daily limit reached" });
+
+    const watchedToday = count + 1;
+    await awardPoints(telegram_id, rewardAmount);
+
+    const { error } = await supabase
+        .from('users')
+        .update({
+            ads_watched_today: watchedToday,
+            last_ad_date: today
+        })
+        .eq('telegram_id', telegram_id);
+    if (error) return res.status(500).json(error);
+
+    res.json({ success: true, newPoints: user.points + rewardAmount, watchedToday });
 });
 
 app.get('/leaderboard', async (req, res) => {
@@ -369,13 +409,25 @@ app.get('/leaderboard', async (req, res) => {
 });
 
 app.get('/get-tasks', async (req, res) => {
-    const { data, error } = await supabase
+    const { uid } = req.query;
+
+    const { data: allTasks, error } = await supabase
         .from('tasks')
         .select('*')
         .order('id', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+    if (!uid) return res.json(allTasks || []);
+
+    const { data: completedRows, error: completedError } = await supabase
+        .from('completed_tasks')
+        .select('task_id')
+        .eq('user_id', uid);
+    if (completedError) return res.status(500).json({ error: completedError.message });
+
+    const completedIds = new Set((completedRows || []).map((row) => Number(row.task_id)));
+    const filtered = (allTasks || []).filter((task) => !completedIds.has(Number(task.id)));
+    res.json(filtered);
 });
 
 app.get('/get-available-tasks', async (req, res) => {

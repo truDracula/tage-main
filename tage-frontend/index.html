@@ -72,18 +72,11 @@
             <div class="glass px-4 py-2 rounded-xl text-blue-500 font-black text-xl" id="balance-display">0</div>
         </div>
 
-        <div id="league-container" style="padding: 20px; text-align: center; background: #000;">
-            <div id="league-name" style="font-weight: 900; letter-spacing: 2px; font-size: 22px;">BRONZE LEAGUE</div>
-            <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 10px; margin-top: 10px; overflow: hidden;">
-                <div id="league-progress-fill" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.5s ease;"></div>
-            </div>
-            <div id="next-league-text" style="font-size: 10px; color: #64748b; margin-top: 5px;">50,000 $TAGE TO SILVER</div>
-        </div>
-
         <div id="view-home" class="view-section">
             <div class="glass p-10 rounded-[2rem] text-center">
                 <h3 class="font-black uppercase mb-4">Daily Check-in</h3>
                 <button onclick="watchAd()" class="watch-btn font-black uppercase">Watch Video</button>
+                <p id="ad-reward-text" class="text-xs text-zinc-300 mt-2">+1,000 $TAGE per video</p>
                 <p class="text-xs text-zinc-400 mt-3">Ads Today: <span id="ad-count-display">0/10</span></p>
             </div>
         </div>
@@ -145,6 +138,13 @@
 
         <div id="leaderboard-page" class="view-section hidden" style="display:none; padding: 20px; overflow-y:auto;">
             <h2 style="text-align: center;" class="font-black text-2xl mb-6">LEADERBOARD</h2>
+            <div id="league-display" style="text-align:center; padding: 20px; background: #111; border-radius: 15px; margin-bottom: 16px;">
+                <h2 id="league-name" style="margin:0; font-weight: 900; letter-spacing: 2px; font-size: 22px;">BRONZE LEAGUE</h2>
+                <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 10px; margin-top: 10px; overflow: hidden;">
+                    <div id="league-progress-fill" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.5s ease;"></div>
+                </div>
+                <p id="next-league-text" style="font-size: 10px; color: #64748b; margin-top: 5px;">50,000 $TAGE TO SILVER</p>
+            </div>
             <div class="lb-tabs" style="display: flex; justify-content: center; gap: 30px; margin-bottom: 20px;">
                 <span onclick="loadLB('total')" id="tab-total" class="lb-link active">TOTAL POINTS</span>
                 <span onclick="loadLB('refs')" id="tab-refs" class="lb-link">TOP REF</span>
@@ -407,7 +407,7 @@
         }
 
         async function loadTaskCards() {
-            const response = await fetch(`${BACKEND_URL}/get-available-tasks?userId=${currentUser.id}`);
+            const response = await fetch(`${BACKEND_URL}/get-tasks?uid=${currentUser.id}`);
             const tasks = await response.json();
 
             const container = document.getElementById('partner-tasks-container');
@@ -435,12 +435,13 @@
         }
 
         async function claimAdReward() {
-            const response = await fetch(`${BACKEND_URL}/watch-ad`, {
+            const response = await fetch(`${BACKEND_URL}/add-ad-reward`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     initData: tg.initData,
-                    telegram_id: currentUser.id
+                    uid: currentUser.id,
+                    amount: 1000
                 })
             });
 
@@ -451,7 +452,7 @@
                 user.last_ad_date = new Date().toISOString().split('T')[0];
                 document.getElementById('balance-display').innerText = formatPoints(data.newPoints);
                 document.getElementById('ad-count-display').innerText = `${data.watchedToday}/10`;
-                alert("Success! +500 points.");
+                alert("Success! +1,000 $TAGE added to your balance.");
             } else {
                 alert(data.error);
             }
