@@ -193,6 +193,14 @@
             return "Guest";
         }
 
+        function formatPoints(value) {
+            const n = Number(value) || 0;
+            if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2).replace(/\.?0+$/, '')}B`;
+            if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2).replace(/\.?0+$/, '')}M`;
+            if (n >= 1_000) return `${(n / 1_000).toFixed(2).replace(/\.?0+$/, '')}K`;
+            return n.toLocaleString();
+        }
+
         async function loadUserData(tgUser) {
             const userId = tgUser?.id || tg.initDataUnsafe.user?.id || 12345;
             const username = tgUser?.username || tgUser?.first_name || tg.initDataUnsafe.user?.username || "Guest";
@@ -236,7 +244,7 @@
                     if (p === 100) {
                         clearInterval(int);
                         document.getElementById('status').innerText = "VERIFIED";
-                        document.getElementById('reward-text').innerText = user.points.toLocaleString();
+                        document.getElementById('reward-text').innerText = formatPoints(user.points);
                         document.getElementById('result').classList.remove('hidden');
                         resolve();
                     }
@@ -403,7 +411,7 @@
                 user.points = data.newPoints;
                 user.ads_watched_today = data.watchedToday;
                 user.last_ad_date = new Date().toISOString().split('T')[0];
-                document.getElementById('balance-display').innerText = data.newPoints.toLocaleString();
+                document.getElementById('balance-display').innerText = formatPoints(data.newPoints);
                 document.getElementById('ad-count-display').innerText = `${data.watchedToday}/10`;
                 alert("Success! +500 points.");
             } else {
@@ -417,7 +425,7 @@
             const adCounter = document.getElementById('ad-count-display');
             const completedList = document.getElementById('completed-list');
 
-            if (pointsEl) pointsEl.innerText = (userData.points || 0).toLocaleString();
+            if (pointsEl) pointsEl.innerText = formatPoints(userData.points || 0);
             if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
 
             if (btn && userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
@@ -475,7 +483,7 @@
                         <span class="lb-rank">#${i + 1}</span>
                         <span class="lb-name">@${u.username || "anon"}</span>
                     </div>
-                    <span class="lb-points">${type === 'total' ? Number(u.points || 0).toLocaleString() : `${u.ref_count || 0} Refs`}</span>
+                    <span class="lb-points">${type === 'total' ? formatPoints(u.points || 0) : `${u.ref_count || 0} Refs`}</span>
                 </div>
             `).join('');
         }
