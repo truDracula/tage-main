@@ -15,6 +15,30 @@ app.use(express.json());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 let bot = null;
 
+app.get('/health', async (_req, res) => {
+    const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL);
+    const hasSupabaseKey = Boolean(process.env.SUPABASE_KEY);
+    const hasAdminSecret = Boolean(process.env.ADMIN_SECRET_KEY);
+    const hasTelegramToken = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+
+    let supabaseReachable = false;
+    if (hasSupabaseUrl && hasSupabaseKey) {
+        const { error } = await supabase.from('users').select('uid').limit(1);
+        supabaseReachable = !error;
+    }
+
+    res.json({
+        ok: hasSupabaseUrl && hasSupabaseKey && supabaseReachable,
+        env: {
+            supabase_url: hasSupabaseUrl,
+            supabase_key: hasSupabaseKey,
+            admin_secret_key: hasAdminSecret,
+            telegram_bot_token: hasTelegramToken
+        },
+        supabase_reachable: supabaseReachable
+    });
+});
+
 try {
     const TelegramBot = require('node-telegram-bot-api');
     if (process.env.TELEGRAM_BOT_TOKEN) {
