@@ -35,11 +35,12 @@
     </style>
 </head>
 <body class="p-6">
-    <div id="loading-screen" style="position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif;">
-        <h1 style="color: white; letter-spacing: 5px; margin-bottom: 10px;">$TAGE</h1>
-        <div id="loading-text" style="color: #38bdf8; font-weight: bold; margin-bottom: 20px; height: 20px;">INITIALIZING...</div>
-        <div style="width: 70%; height: 6px; background: #1e293b; border-radius: 10px; overflow: hidden;">
-            <div id="progress" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.4s ease;"></div>
+    <div id="loading-screen" style="position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <div id="loading-text" style="color: #38bdf8; font-family: monospace; font-size: 14px; margin-bottom: 15px; letter-spacing: 3px; text-transform: uppercase;">
+            Initializing...
+        </div>
+        <div style="width: 60%; height: 2px; background: #1e293b; border-radius: 5px; overflow: hidden;">
+            <div id="progress" style="width: 0%; height: 100%; background: #38bdf8; box-shadow: 0 0 10px #38bdf8; transition: width 0.4s ease;"></div>
         </div>
     </div>
 
@@ -124,11 +125,19 @@
             </div>
         </div>
 
-        <div class="nav-tabs">
-            <div class="tab nav-active" onclick="showPage('home')"><br>Home</div>
-            <div class="tab" onclick="showPage('tasks')"><br>Tasks</div>
-            <div class="tab" onclick="showPage('referrals')"><br>Refs</div>
-            <div class="tab" onclick="showPage('leaderboard')"><br>Leaderboard</div>
+        <div class="nav-tabs" style="position: fixed; bottom: 0; width: 100%; display: flex; justify-content: space-around; background: #000; padding: 15px 0; border-top: 1px solid #1e293b;">
+            <div class="tab nav-active" onclick="showPage('home')" style="text-align: center; color: #94a3b8; font-size: 12px;">
+                <span style="font-size: 20px;"></span><br>Home
+            </div>
+            <div class="tab" onclick="showPage('tasks')" style="text-align: center; color: #94a3b8; font-size: 12px;">
+                <span style="font-size: 20px;"></span><br>Tasks
+            </div>
+            <div class="tab" onclick="showPage('referrals')" style="text-align: center; color: #94a3b8; font-size: 12px;">
+                <span style="font-size: 20px;"></span><br>Refs
+            </div>
+            <div class="tab" onclick="showPage('leaderboard')" style="text-align: center; color: #94a3b8; font-size: 12px;">
+                <span style="font-size: 20px;"></span><br>Leaderboard
+            </div>
         </div>
     </div>
 
@@ -306,7 +315,7 @@
         }
 
         async function loadTaskCards() {
-            const response = await fetch(`${BACKEND_URL}/get-tasks`);
+            const response = await fetch(`${BACKEND_URL}/get-available-tasks?userId=${currentUser.id}`);
             const tasks = await response.json();
 
             const container = document.getElementById('partner-tasks-container');
@@ -316,7 +325,7 @@
                         <h4>${task.title}</h4>
                         <p>+${Number(task.points || 0).toLocaleString()} Points</p>
                     </div>
-                    <button onclick="handleTaskClick('${task.link}', ${task.id || 0}, ${Number(task.points || 0)})">GO</button>
+                    <button ${task.isClaimed ? 'disabled' : ''} onclick="handleTaskClick('${task.link}', ${task.id || 0}, ${Number(task.points || 0)})">${task.isClaimed ? 'CLAIMED' : 'GO'}</button>
                 </div>
             `).join('');
         }
@@ -488,36 +497,33 @@
             }, 500);
         }
 
-        function runAnalyzeSequence() {
+        function runCleanAnalysis() {
+            const statusText = document.getElementById('loading-text');
+            const bar = document.getElementById('progress');
             const steps = [
-                { text: "CONNECTING TO TELEGRAM...", time: 800 },
-                { text: "ANALYZING PROFILE AGE...", time: 1200 },
-                { text: "CHECKING REFERRAL STATUS...", time: 1000 },
-                { text: "CALCULATING STARTING BONUS...", time: 1500 },
-                { text: "FINALIZING SECURE SESSION...", time: 800 }
+                { msg: "Connecting...", time: 700 },
+                { msg: "Analyzing Profile...", time: 1300 },
+                { msg: "Calculating Rewards...", time: 1000 },
+                { msg: "Finalizing...", time: 800 }
             ];
 
-            let currentStep = 0;
-            const msgElement = document.getElementById('loading-text');
-            const bar = document.getElementById('progress');
-
-            function nextStep() {
-                if (currentStep < steps.length) {
-                    msgElement.innerText = steps[currentStep].text;
-                    bar.style.width = ((currentStep + 1) * 20) + "%";
-                    setTimeout(() => {
-                        currentStep++;
-                        nextStep();
-                    }, steps[currentStep].time);
+            let current = 0;
+            function process() {
+                if (current < steps.length) {
+                    statusText.innerText = steps[current].msg;
+                    bar.style.width = ((current + 1) * 25) + "%";
+                    setTimeout(() => { current++; process(); }, steps[current].time);
                 } else {
-                    document.getElementById('loading-screen').style.opacity = '0';
+                    const screen = document.getElementById('loading-screen');
+                    screen.style.opacity = '0';
+                    screen.style.transition = 'opacity 0.5s ease';
                     setTimeout(() => {
-                        document.getElementById('loading-screen').style.display = 'none';
+                        screen.style.display = 'none';
                         finishLoading();
                     }, 500);
                 }
             }
-            nextStep();
+            process();
         }
 
         function startApp() {
@@ -532,7 +538,7 @@
                 if (user) {
                     clearInterval(checkInterval);
                     pendingTelegramUser = user;
-                    runAnalyzeSequence();
+                    runCleanAnalysis();
                 } else if (checkCount >= 20) {
                     clearInterval(checkInterval);
                     alert("Telegram connection timeout. Please restart.");

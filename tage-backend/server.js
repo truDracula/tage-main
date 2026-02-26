@@ -245,7 +245,8 @@ app.post('/claim-task', async (req, res) => {
     const { initData, userId, taskId, telegram_id, task_reward } = req.body;
     const uid = userId || telegram_id;
     const taskReward = Number(task_reward) || 0;
-    const today = new Date().toISOString().split('T')[0];
+    const nowIso = new Date().toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     if (!verifyTelegramData(initData)) {
         return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
@@ -259,7 +260,7 @@ app.post('/claim-task', async (req, res) => {
         .select('*')
         .eq('user_id', uid)
         .eq('task_id', taskId)
-        .eq('completed_at', today);
+        .gt('completed_at', twentyFourHoursAgo);
 
     if (existingError) return res.status(500).json({ error: existingError.message });
     if ((existing || []).length > 0) {
@@ -271,7 +272,7 @@ app.post('/claim-task', async (req, res) => {
         .insert([{
             user_id: uid,
             task_id: taskId,
-            completed_at: today
+            completed_at: nowIso
         }]);
     if (insertError) return res.status(500).json({ error: insertError.message });
 
@@ -378,6 +379,33 @@ app.get('/get-tasks', async (req, res) => {
     res.json(data || []);
 });
 
+app.get('/get-available-tasks', async (req, res) => {
+    const { userId } = req.query;
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: allTasks, error: tasksError } = await supabase.from('tasks').select('*');
+    if (tasksError) return res.status(500).json({ error: tasksError.message });
+
+    if (!userId) {
+        return res.json((allTasks || []).map((task) => ({ ...task, isClaimed: false })));
+    }
+
+    const { data: recentCompletions, error: completionsError } = await supabase
+        .from('task_completions')
+        .select('task_id')
+        .eq('user_id', userId)
+        .gt('completed_at', twentyFourHoursAgo);
+    if (completionsError) return res.status(500).json({ error: completionsError.message });
+
+    const completedIds = new Set((recentCompletions || []).map((c) => c.task_id));
+    const tasksWithStatus = (allTasks || []).map((task) => ({
+        ...task,
+        isClaimed: completedIds.has(task.id)
+    }));
+
+    res.json(tasksWithStatus);
+});
+
 app.post('/admin/execute', async (req, res) => {
     const { auth_key, admin_id, action, payload } = req.body;
 
@@ -388,15 +416,16 @@ app.post('/admin/execute', async (req, res) => {
     try {
         switch (action) {
             case 'add_task': {
+                const { title, link, points, category } = payload;
                 const { data: taskData, error: taskError } = await supabase
                     .from('tasks')
                     .insert([{
-                        title: payload.title,
-                        link: payload.link,
-                        points: parseInt(payload.points),
-                        category: payload.category
+                        title,
+                        link,
+                        points: parseInt(points),
+                        category: category || 'partner'
                     }]);
-                if (taskError) throw taskError;
+                if (taskError) return res.status(500).json({ success: false, error: taskError.message });
                 return res.json({ success: true, message: "Task Published!", data: taskData });
             }
 
