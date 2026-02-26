@@ -136,6 +136,14 @@ async function recordAdWatch(userId, reward) {
         }]);
 
     if (error) {
+        const msg = String(error.message || '');
+        const missingTable =
+            error.code === '42P01' ||
+            /ad_watches/i.test(msg) && (/does not exist/i.test(msg) || /could not find the table/i.test(msg));
+        if (missingTable) {
+            console.warn("ad_watches table missing; skipping ad watch log.");
+            return null;
+        }
         console.error("Supabase Error (ad_watches):", error.message);
         return error;
     }
