@@ -24,9 +24,11 @@ app.get('/health', async (_req, res) => {
     const botPollingEnabled = process.env.ENABLE_BOT_POLLING === 'true';
 
     let supabaseReachable = false;
+    let supabaseError = null;
     if (hasSupabaseUrl && hasSupabaseKey) {
         const { error } = await supabase.from('users').select(USER_ID_COLUMN).limit(1);
         supabaseReachable = !error;
+        if (error) supabaseError = error.message;
     }
 
     res.json({
@@ -38,7 +40,8 @@ app.get('/health', async (_req, res) => {
             telegram_bot_token: hasTelegramToken,
             enable_bot_polling: botPollingEnabled
         },
-        supabase_reachable: supabaseReachable
+        supabase_reachable: supabaseReachable,
+        supabase_error: supabaseError
     });
 });
 
