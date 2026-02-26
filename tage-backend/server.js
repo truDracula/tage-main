@@ -242,17 +242,53 @@ app.post('/complete-task', async (req, res) => {
 });
 
 app.post('/claim-task', async (req, res) => {
-    const { initData, telegram_id, task_reward } = req.body;
-    const reward = Number(task_reward) || 0;
+    const { initData, userId, taskId, telegram_id, task_reward } = req.body;
+    const uid = userId || telegram_id;
+    const taskReward = Number(task_reward) || 0;
+    const today = new Date().toISOString().split('T')[0];
 
     if (!verifyTelegramData(initData)) {
         return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
+    if (!uid) {
+        return res.status(400).json({ error: "Missing user id" });
+    }
+
+    const { data: existing, error: existingError } = await supabase
+        .from('task_completions')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('task_id', taskId)
+        .eq('completed_at', today);
+
+    if (existingError) return res.status(500).json({ error: existingError.message });
+    if ((existing || []).length > 0) {
+        return res.json({ success: false, message: "Already claimed today!" });
+    }
+
+    const { error: insertError } = await supabase
+        .from('task_completions')
+        .insert([{
+            user_id: uid,
+            task_id: taskId,
+            completed_at: today
+        }]);
+    if (insertError) return res.status(500).json({ error: insertError.message });
+
+    let reward = taskReward;
+    if ((!reward || reward <= 0) && taskId) {
+        const { data: taskData } = await supabase
+            .from('tasks')
+            .select('points')
+            .eq('id', taskId)
+            .single();
+        reward = Number(taskData?.points || 0);
     }
     if (reward <= 0) {
         return res.status(400).json({ error: "Invalid task reward" });
     }
 
-    await awardPoints(telegram_id, reward);
+    await awardPoints(uid, reward);
     res.json({ success: true });
 });
 
