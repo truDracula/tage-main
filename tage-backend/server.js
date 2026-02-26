@@ -520,24 +520,24 @@ app.get('/get-tasks', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     if (!uid) return res.json(allTasks || []);
 
-    // Primary filter source: completed_actions tracker
-    const { data: finishedActions, error: finishedError } = await supabase
-        .from('completed_actions')
-        .select('action_id')
-        .eq('user_id', uid)
-        .eq('action_type', 'task');
+    // Primary filter source: completed_tasks (Blacksmith schema)
+    const { data: completedRows, error: completedError } = await supabase
+        .from('completed_tasks')
+        .select('task_id')
+        .eq('user_id', uid);
 
     let completedIds = new Set();
-    if (!finishedError) {
-        completedIds = new Set((finishedActions || []).map((row) => Number(row.action_id)));
-    } else {
-        // Fallback for older schema deployments
-        const { data: completedRows, error: completedError } = await supabase
-            .from('completed_tasks')
-            .select('task_id')
-            .eq('user_id', uid);
-        if (completedError) return res.status(500).json({ error: completedError.message });
+    if (!completedError) {
         completedIds = new Set((completedRows || []).map((row) => Number(row.task_id)));
+    } else {
+        // Fallback for alternate schema
+        const { data: finishedActions, error: finishedError } = await supabase
+            .from('completed_actions')
+            .select('action_id')
+            .eq('user_id', uid)
+            .eq('action_type', 'task');
+        if (finishedError) return res.status(500).json({ error: finishedError.message });
+        completedIds = new Set((finishedActions || []).map((row) => Number(row.action_id)));
     }
 
     const filtered = (allTasks || []).filter((task) => !completedIds.has(Number(task.id)));

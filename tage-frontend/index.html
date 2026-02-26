@@ -450,12 +450,9 @@
                 btn.innerText = "CLAIMED ✓";
                 btn.style.background = "#059669";
                 btn.disabled = true;
-                const recorded = await recordAction('task', taskId, Number(points || 0));
-                if (recorded) {
-                    await initializeUser();
-                    loadLeaderboard('total');
-                    alert("Points saved permanently!");
-                }
+                await initializeUser();
+                loadLeaderboard('total');
+                alert("Points saved permanently!");
             } else {
                 const err = await res.json().catch(() => ({}));
                 btn.innerText = "CLAIM FAILED";
@@ -512,9 +509,8 @@
                 user.points = data.newPoints;
                 user.ads_watched_today = data.watchedToday;
                 user.last_ad_date = new Date().toISOString().split('T')[0];
-                document.getElementById('balance-display').innerText = formatPoints(data.newPoints);
+                updateUIPoints(data.newPoints);
                 document.getElementById('ad-count-display').innerText = `${data.watchedToday}/10`;
-                await recordAction('ad', 'daily_video', 1000);
                 alert("Success! +1,000 $TAGE added to your balance.");
             } else {
                 alert(data.error);
@@ -778,3 +774,4 @@
     </script>
 </body>
 </html>
+
