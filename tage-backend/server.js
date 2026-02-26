@@ -6,10 +6,9 @@ require('dotenv').config();
 
 const app = express();
 app.use(cors({
-    origin: '*'
-    ,
+    origin: process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
@@ -242,23 +241,23 @@ app.post('/complete-task', async (req, res) => {
 });
 
 app.post('/claim-task', async (req, res) => {
-    const { initData, userId, taskId, telegram_id, task_reward } = req.body;
-    const uid = userId || telegram_id;
+    const { initData, userId, uid, taskId, telegram_id, task_reward } = req.body;
+    const userUid = uid || userId || telegram_id;
     const taskReward = Number(task_reward) || 0;
     const nowIso = new Date().toISOString();
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    if (!verifyTelegramData(initData)) {
+    if (initData && !verifyTelegramData(initData)) {
         return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
     }
-    if (!uid) {
+    if (!userUid) {
         return res.status(400).json({ error: "Missing user id" });
     }
 
     const { data: existing, error: existingError } = await supabase
         .from('task_completions')
         .select('*')
-        .eq('user_id', uid)
+        .eq('user_id', userUid)
         .eq('task_id', taskId)
         .gt('completed_at', twentyFourHoursAgo);
 
@@ -270,7 +269,7 @@ app.post('/claim-task', async (req, res) => {
     const { error: insertError } = await supabase
         .from('task_completions')
         .insert([{
-            user_id: uid,
+            user_id: userUid,
             task_id: taskId,
             completed_at: nowIso
         }]);
@@ -289,7 +288,7 @@ app.post('/claim-task', async (req, res) => {
         return res.status(400).json({ error: "Invalid task reward" });
     }
 
-    await awardPoints(uid, reward);
+    await awardPoints(userUid, reward);
     res.json({ success: true });
 });
 

@@ -297,27 +297,52 @@
             }
         }
 
-        async function handleTaskClick(link, taskId, points) {
-            window.open(link, "_blank");
+        function startTask(taskId, link, points) {
+            window.open(link, '_blank');
 
-            const response = await fetch(`${BACKEND_URL}/claim-task`, {
+            const btn = document.getElementById(`task-btn-${taskId}`);
+            btn.disabled = true;
+            btn.style.background = "#334155";
+
+            let timeLeft = 10;
+            const timer = setInterval(() => {
+                btn.innerText = `WAIT ${timeLeft}s`;
+                timeLeft--;
+
+                if (timeLeft < 0) {
+                    clearInterval(timer);
+                    btn.innerText = "CLAIM POINTS";
+                    btn.style.background = "#2563eb";
+                    btn.disabled = false;
+                    btn.onclick = () => processManualClaim(taskId, points);
+                }
+            }, 1000);
+        }
+
+        async function processManualClaim(taskId, points) {
+            const btn = document.getElementById(`task-btn-${taskId}`);
+            btn.innerText = "VERIFYING...";
+
+            const res = await fetch(`${BACKEND_URL}/claim-task`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    initData: tg.initData,
-                    userId: currentUser.id,
+                    uid: tg.initDataUnsafe?.user?.id || currentUser.id,
                     taskId: taskId,
-                    task_reward: points
+                    task_reward: points,
+                    initData: tg.initData
                 })
             });
 
-            const data = await response.json();
-            if (response.ok) {
+            if (res.ok) {
+                btn.innerText = "CLAIMED ✓";
+                btn.style.background = "#059669";
+                btn.disabled = true;
                 user.points = (user.points || 0) + Number(points || 0);
                 updateUI(user);
-                alert("Task reward claimed!");
             } else {
-                alert(data.error || "Task claim failed");
+                btn.innerText = "CLAIM FAILED";
+                btn.disabled = false;
             }
         }
 
@@ -332,7 +357,7 @@
                         <h4>${task.title}</h4>
                         <p>+${Number(task.points || 0).toLocaleString()} Points</p>
                     </div>
-                    <button ${task.isClaimed ? 'disabled' : ''} onclick="handleTaskClick('${task.link}', ${task.id || 0}, ${Number(task.points || 0)})">${task.isClaimed ? 'CLAIMED' : 'GO'}</button>
+                    <button id="task-btn-${task.id || 0}" ${task.isClaimed ? 'disabled' : ''} onclick="startTask(${task.id || 0}, '${task.link}', ${Number(task.points || 0)})">${task.isClaimed ? 'CLAIMED' : 'GO'}</button>
                 </div>
             `).join('');
         }
