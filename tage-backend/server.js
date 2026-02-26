@@ -466,15 +466,43 @@ app.get('/get-tasks', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     if (!uid) return res.json(allTasks || []);
 
-    const { data: completedRows, error: completedError } = await supabase
-        .from('completed_tasks')
-        .select('task_id')
-        .eq('user_id', uid);
-    if (completedError) return res.status(500).json({ error: completedError.message });
+    // Primary filter source: completed_actions tracker
+    const { data: finishedActions, error: finishedError } = await supabase
+        .from('completed_actions')
+        .select('action_id')
+        .eq('user_id', uid)
+        .eq('action_type', 'task');
 
-    const completedIds = new Set((completedRows || []).map((row) => Number(row.task_id)));
+    let completedIds = new Set();
+    if (!finishedError) {
+        completedIds = new Set((finishedActions || []).map((row) => Number(row.action_id)));
+    } else {
+        // Fallback for older schema deployments
+        const { data: completedRows, error: completedError } = await supabase
+            .from('completed_tasks')
+            .select('task_id')
+            .eq('user_id', uid);
+        if (completedError) return res.status(500).json({ error: completedError.message });
+        completedIds = new Set((completedRows || []).map((row) => Number(row.task_id)));
+    }
+
     const filtered = (allTasks || []).filter((task) => !completedIds.has(Number(task.id)));
     res.json(filtered);
+});
+
+app.get('/user-balance', async (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('uid', uid)
+        .single();
+
+    if (error || !data) return res.status(404).json({ error: "User not found" });
+    const balance = Number(data.balance ?? data.points ?? 0);
+    return res.json({ success: true, balance });
 });
 
 app.get('/get-available-tasks', async (req, res) => {
