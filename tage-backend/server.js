@@ -386,7 +386,9 @@ app.post('/claim-task', async (req, res) => {
     const { initData, userId, uid, taskId, telegram_id, task_reward } = req.body;
     const userUid = uid || userId || telegram_id;
     const taskReward = Number(task_reward) || 0;
-    const nowIso = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const todayKey = nowIso.split('T')[0];
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     if (initData && !verifyTelegramData(initData)) {
@@ -407,8 +409,9 @@ app.post('/claim-task', async (req, res) => {
     }
 
     const existingTasks = Array.isArray(existingUser.completed_tasks) ? existingUser.completed_tasks : [];
+    const taskDayKey = `${taskId}:${todayKey}`;
     const existingSet = new Set(existingTasks.map((t) => String(t)));
-    if (existingSet.has(String(taskId))) {
+    if (existingSet.has(taskDayKey)) {
         return res.json({ success: false, message: "Task already claimed!" });
     }
 
@@ -458,7 +461,9 @@ app.post('/claim-task', async (req, res) => {
         return res.status(400).json({ error: "Invalid task reward" });
     }
 
-    const updatedTasks = [...existingTasks, taskId];
+    // Keep only dated task keys (taskId:YYYY-MM-DD) and append today's key.
+    const cleanedTasks = existingTasks.filter((item) => /^\d+:\d{4}-\d{2}-\d{2}$/.test(String(item)));
+    const updatedTasks = [...cleanedTasks, taskDayKey];
     await supabase
         .from('users')
         .update({ completed_tasks: updatedTasks })
@@ -474,7 +479,8 @@ app.post('/claim-task', async (req, res) => {
     res.json({
         success: true,
         newPoints: Number(refreshedUser?.points ?? (Number(existingUser.points || 0) + reward)),
-        completedTasks: updatedTasks
+        completedTasks: updatedTasks,
+        claimedTask: taskDayKey
     });
 });
 
@@ -693,7 +699,8 @@ app.get('/get-tasks', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     if (!uid) return res.json(allTasks || []);
 
-    // Primary filter source: task_completions (written by /claim-task)
+    const todayKey = new Date().toISOString().split('T')[0];
+    // Primary source: task_completions in last 24h
     const { data: completionsRows, error: completionsError } = await supabase
         .from('task_completions')
         .select('task_id')
@@ -704,7 +711,19 @@ app.get('/get-tasks', async (req, res) => {
         completedIds = new Set((completionsRows || []).map((row) => Number(row.task_id)));
     }
 
-    // Also include completed_tasks for Blacksmith/legacy schemas.
+    // Also include users.completed_tasks dated keys (taskId:YYYY-MM-DD).
+    const { data: userRow } = await supabase
+        .from('users')
+        .select('completed_tasks')
+        .eq(USER_ID_COLUMN, uid)
+        .single();
+    const completedTasksArray = Array.isArray(userRow?.completed_tasks) ? userRow.completed_tasks : [];
+    for (const key of completedTasksArray) {
+        const m = String(key).match(/^(\d+):(\d{4}-\d{2}-\d{2})$/);
+        if (m && m[2] === todayKey) completedIds.add(Number(m[1]));
+    }
+
+    // Also include completed_tasks table for Blacksmith/legacy schemas.
     const { data: completedRows, error: completedError } = await supabase
         .from('completed_tasks')
         .select('task_id')
@@ -717,8 +736,11 @@ app.get('/get-tasks', async (req, res) => {
         return res.json(allTasks || []);
     }
 
-    const filtered = (allTasks || []).filter((task) => !completedIds.has(Number(task.id)));
-    res.json(filtered);
+    const tasksWithStatus = (allTasks || []).map((task) => ({
+        ...task,
+        isClaimed: completedIds.has(Number(task.id))
+    }));
+    res.json(tasksWithStatus);
 });
 
 app.get('/user-balance', async (req, res) => {

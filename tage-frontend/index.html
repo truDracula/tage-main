@@ -473,7 +473,7 @@
                         <h4>${task.title}</h4>
                         <p>+${Number(task.points || task.reward || 0).toLocaleString()} $TAGE</p>
                     </div>
-                    <button id="task-btn-${task.id || 0}" onclick="startTask(${task.id || 0}, '${task.link}', ${Number(task.points || task.reward || 0)})">GO</button>
+                    <button id="task-btn-${task.id || 0}" ${task.isClaimed ? 'disabled' : ''} onclick="${task.isClaimed ? '' : `startTask(${task.id || 0}, '${task.link}', ${Number(task.points || task.reward || 0)})`}">${task.isClaimed ? 'CLAIMED' : 'GO'}</button>
                 </div>
             `).join('');
         }
@@ -515,7 +515,7 @@
         }
 
         function updateUI(userData) {
-                        const pointsEl = document.getElementById('balance-display');
+            const pointsEl = document.getElementById('balance-display');
             const adCounter = document.getElementById('ad-count-display');
             const completedList = document.getElementById('completed-list');
             const completedTasks = Array.isArray(userData?.completed_tasks) ? userData.completed_tasks : [];
@@ -528,6 +528,19 @@
             if (completedList) {
                 completedList.innerText = completedTasks.length ? completedTasks.join(', ') : "No tasks completed yet.";
             }
+
+            // Disable hardcoded Today tasks if claimed today (taskId:YYYY-MM-DD keys).
+            const today = new Date().toISOString().split('T')[0];
+            const ids = [1000, 9001, 9002, 9003];
+            ids.forEach((id) => {
+                const btn = document.getElementById(`task-btn-${id}`);
+                if (!btn) return;
+                const claimed = completedTasks.includes(`${id}:${today}`);
+                btn.disabled = claimed;
+                btn.innerText = claimed ? 'CLAIMED' : 'GO';
+                btn.style.background = claimed ? '#6c757d' : '';
+                btn.style.cursor = claimed ? 'not-allowed' : '';
+            });
         }
 
         function initReferralPage() {
