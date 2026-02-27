@@ -235,6 +235,12 @@
             if (unsafe) return String(unsafe);
             const urlValue = new URLSearchParams(window.location.search).get('startapp');
             if (urlValue) return String(urlValue);
+            const hash = window.location.hash ? window.location.hash.slice(1) : '';
+            if (hash) {
+                const hashParams = new URLSearchParams(hash);
+                const tgStart = hashParams.get('tgWebAppStartParam');
+                if (tgStart) return String(tgStart);
+            }
             if (!raw) return null;
             const params = new URLSearchParams(raw);
             const value = params.get('start_param');
