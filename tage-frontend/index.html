@@ -229,10 +229,20 @@
             return n.toLocaleString('en-US');
         }
 
+        function getStartParam() {
+            const raw = tg.initData || '';
+            const unsafe = tg.initDataUnsafe?.start_param;
+            if (unsafe) return String(unsafe);
+            if (!raw) return null;
+            const params = new URLSearchParams(raw);
+            const value = params.get('start_param');
+            return value ? String(value) : null;
+        }
+
         async function loadUserData(tgUser) {
             const userId = tgUser?.id || tg.initDataUnsafe.user?.id || 12345;
             const username = tgUser?.username || tgUser?.first_name || tg.initDataUnsafe.user?.username || "Guest";
-            const referrerId = tg.initDataUnsafe.start_param || null;
+            const referrerId = getStartParam();
 
             const checkRes = await fetch(`${BACKEND_URL}/check-user`, {
                 method: 'POST',
@@ -684,7 +694,7 @@
         window.Telegram.WebApp.expand();
 
         async function checkUserStatus(uid, username) {
-            const referrerId = tg.initDataUnsafe?.start_param || null;
+            const referrerId = getStartParam();
             const response = await fetch(`${BACKEND_URL}/user-init`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
