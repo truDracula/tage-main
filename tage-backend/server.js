@@ -396,14 +396,19 @@ app.post('/claim-task', async (req, res) => {
         return res.status(400).json({ error: "Missing user id" });
     }
 
-    // Fallback-safe duplicate protection: users.completed_tasks
-    const { data: existingUser } = await supabase
+    // Source of truth for duplicate protection.
+    const { data: existingUser, error: existingUserError } = await supabase
         .from('users')
-        .select('completed_tasks')
+        .select('points, completed_tasks')
         .eq(USER_ID_COLUMN, userUid)
         .single();
-    const existingTasks = Array.isArray(existingUser?.completed_tasks) ? existingUser.completed_tasks : [];
-    if (existingTasks.includes(taskId)) {
+    if (existingUserError || !existingUser) {
+        return res.status(404).json({ error: "User not found" });
+    }
+
+    const existingTasks = Array.isArray(existingUser.completed_tasks) ? existingUser.completed_tasks : [];
+    const existingSet = new Set(existingTasks.map((t) => String(t)));
+    if (existingSet.has(String(taskId))) {
         return res.json({ success: false, message: "Task already claimed!" });
     }
 
@@ -453,24 +458,24 @@ app.post('/claim-task', async (req, res) => {
         return res.status(400).json({ error: "Invalid task reward" });
     }
 
-    // Persist completion in users.completed_tasks (JSON array) for clients that read this column.
-    const { data: claimUser, error: claimUserError } = await supabase
+    const updatedTasks = [...existingTasks, taskId];
+    await supabase
         .from('users')
-        .select('completed_tasks')
-        .eq(USER_ID_COLUMN, userUid)
-        .single();
-    if (!claimUserError && claimUser) {
-        const currentTasks = Array.isArray(claimUser.completed_tasks) ? claimUser.completed_tasks : [];
-        if (!currentTasks.includes(taskId)) {
-            await supabase
-                .from('users')
-                .update({ completed_tasks: [...currentTasks, taskId] })
-                .eq(USER_ID_COLUMN, userUid);
-        }
-    }
+        .update({ completed_tasks: updatedTasks })
+        .eq(USER_ID_COLUMN, userUid);
 
     await awardPoints(userUid, reward);
-    res.json({ success: true });
+    const { data: refreshedUser } = await supabase
+        .from('users')
+        .select('points')
+        .eq(USER_ID_COLUMN, userUid)
+        .single();
+
+    res.json({
+        success: true,
+        newPoints: Number(refreshedUser?.points ?? (Number(existingUser.points || 0) + reward)),
+        completedTasks: updatedTasks
+    });
 });
 
 app.post('/claim-onboarding', async (req, res) => {

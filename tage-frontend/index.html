@@ -443,7 +443,12 @@
                 btn.innerText = "CLAIMED";
                 btn.style.background = "#059669";
                 btn.disabled = true;
-                await initializeUser();
+                if (typeof payload.newPoints !== 'undefined') {
+                    updateUIPoints(payload.newPoints);
+                } else {
+                    await initializeUser();
+                }
+                loadTaskCards();
                 loadLeaderboard('total');
                 alert("Points saved permanently!");
             } else {
