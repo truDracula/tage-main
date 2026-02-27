@@ -396,15 +396,24 @@ app.post('/claim-task', async (req, res) => {
         return res.status(400).json({ error: "Missing user id" });
     }
 
+    // Fallback-safe duplicate protection: users.completed_tasks
+    const { data: existingUser } = await supabase
+        .from('users')
+        .select('completed_tasks')
+        .eq(USER_ID_COLUMN, userUid)
+        .single();
+    const existingTasks = Array.isArray(existingUser?.completed_tasks) ? existingUser.completed_tasks : [];
+    if (existingTasks.includes(taskId)) {
+        return res.json({ success: false, message: "Task already claimed!" });
+    }
+
     const { data: existing, error: existingError } = await supabase
         .from('task_completions')
         .select('*')
         .eq('user_id', userUid)
         .eq('task_id', taskId)
         .gt('completed_at', twentyFourHoursAgo);
-
-    if (existingError) return res.status(500).json({ error: existingError.message });
-    if ((existing || []).length > 0) {
+    if (!existingError && (existing || []).length > 0) {
         return res.json({ success: false, message: "Already claimed today!" });
     }
 
@@ -415,7 +424,14 @@ app.post('/claim-task', async (req, res) => {
             task_id: taskId,
             completed_at: nowIso
         }]);
-    if (insertError) return res.status(500).json({ error: insertError.message });
+    if (insertError) {
+        const msg = String(insertError.message || '');
+        const isRls =
+            insertError.code === '42501' ||
+            /row-level security/i.test(msg) ||
+            /violates row-level security policy/i.test(msg);
+        if (!isRls) return res.status(500).json({ error: insertError.message });
+    }
     // Keep compatibility with projects using completed_tasks for filtering/history.
     await supabase
         .from('completed_tasks')
@@ -444,11 +460,11 @@ app.post('/claim-task', async (req, res) => {
         .eq(USER_ID_COLUMN, userUid)
         .single();
     if (!claimUserError && claimUser) {
-        const existingTasks = Array.isArray(claimUser.completed_tasks) ? claimUser.completed_tasks : [];
-        if (!existingTasks.includes(taskId)) {
+        const currentTasks = Array.isArray(claimUser.completed_tasks) ? claimUser.completed_tasks : [];
+        if (!currentTasks.includes(taskId)) {
             await supabase
                 .from('users')
-                .update({ completed_tasks: [...existingTasks, taskId] })
+                .update({ completed_tasks: [...currentTasks, taskId] })
                 .eq(USER_ID_COLUMN, userUid);
         }
     }
