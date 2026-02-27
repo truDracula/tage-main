@@ -27,7 +27,9 @@
         .lb-info { display: flex; align-items: center; gap: 12px; }
         .lb-rank { font-weight: 800; color: #38bdf8; width: 30px; }
         .lb-name { font-weight: 600; color: white; }
-        .lb-points { color: #38bdf8; font-weight: 700; }
+        .lb-points { color: #38bdf8; font-weight: 700; display: inline-flex; align-items: baseline; gap: 6px; }
+        .lb-value { font-size: 14px; line-height: 1; }
+        .lb-unit { font-size: 10px; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase; }
         .lb-link { color: #64748b; font-size: 12px; font-weight: 700; letter-spacing: 1px; cursor: pointer; }
         .lb-link.active { color: #38bdf8; text-shadow: 0 0 8px rgba(56, 189, 248, 0.5); }
         .task-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
@@ -592,7 +594,10 @@
                         <span class="lb-rank">#${i + 1}</span>
                         <span class="lb-name">@${u.username || "anon"}</span>
                     </div>
-                    <span class="lb-points">${type === 'total' ? `${formatPoints(u.points || 0)} $TAGE` : `${u.ref_count || 0} Refs`}</span>
+                    <span class="lb-points">
+                        <span class="lb-value">${type === 'total' ? formatPoints(u.points || 0) : (u.ref_count || 0)}</span>
+                        <span class="lb-unit">${type === 'total' ? 'PTS' : 'REFS'}</span>
+                    </span>
                 </div>
             `).join('');
 
