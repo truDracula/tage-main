@@ -305,10 +305,15 @@ app.post('/check-user', async (req, res) => {
 });
 
 app.post('/user-init', async (req, res) => {
-    const { uid, username, referrer_id } = req.body;
+    const { uid, username, referrer_id, initData } = req.body;
+    let resolvedReferrer = referrer_id || null;
+    if (!resolvedReferrer && initData) {
+        const params = new URLSearchParams(initData);
+        resolvedReferrer = params.get('start_param') || null;
+    }
 
     try {
-        const result = await upsertUser(uid, username || 'Guest', referrer_id || null);
+        const result = await upsertUser(uid, username || 'Guest', resolvedReferrer);
         res.json({
             ...result.user,
             isNewUser: result.isNewUser,

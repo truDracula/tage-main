@@ -233,6 +233,8 @@
             const raw = tg.initData || '';
             const unsafe = tg.initDataUnsafe?.start_param;
             if (unsafe) return String(unsafe);
+            const urlValue = new URLSearchParams(window.location.search).get('startapp');
+            if (urlValue) return String(urlValue);
             if (!raw) return null;
             const params = new URLSearchParams(raw);
             const value = params.get('start_param');
@@ -698,7 +700,7 @@
             const response = await fetch(`${BACKEND_URL}/user-init`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid, username, referrer_id: referrerId })
+                body: JSON.stringify({ uid, username, referrer_id: referrerId, initData: tg.initData })
             });
             const userData = await response.json();
 
