@@ -445,6 +445,7 @@
                 btn.innerText = "CLAIMED";
                 btn.style.background = "#059669";
                 btn.disabled = true;
+                const rewardAdded = Number(payload.reward || points || 0);
                 if (typeof payload.newPoints !== 'undefined') {
                     updateUIPoints(payload.newPoints);
                 } else {
@@ -452,7 +453,7 @@
                 }
                 loadTaskCards();
                 loadLeaderboard('total');
-                alert("Points saved permanently!");
+                alert(`Success! +${formatPoints(rewardAdded)} $TAGE added to your balance.`);
             } else {
                 btn.innerText = "CLAIM FAILED";
                 btn.disabled = false;
@@ -683,10 +684,11 @@
         window.Telegram.WebApp.expand();
 
         async function checkUserStatus(uid, username) {
+            const referrerId = tg.initDataUnsafe?.start_param || null;
             const response = await fetch(`${BACKEND_URL}/user-init`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid, username })
+                body: JSON.stringify({ uid, username, referrer_id: referrerId })
             });
             const userData = await response.json();
 

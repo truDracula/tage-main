@@ -478,6 +478,7 @@ app.post('/claim-task', async (req, res) => {
 
     res.json({
         success: true,
+        reward,
         newPoints: Number(refreshedUser?.points ?? (Number(existingUser.points || 0) + reward)),
         completedTasks: updatedTasks,
         claimedTask: taskDayKey
