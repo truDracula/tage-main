@@ -324,6 +324,31 @@ app.post('/user-init', async (req, res) => {
     }
 });
 
+app.post('/bind-referrer', async (req, res) => {
+    const { uid, referrer_id } = req.body;
+    if (!uid || !referrer_id) return res.status(400).json({ error: "Missing uid/referrer_id" });
+    if (String(uid) === String(referrer_id)) return res.status(400).json({ error: "Cannot refer self" });
+
+    const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('referred_by')
+        .eq(USER_ID_COLUMN, uid)
+        .single();
+    if (userError || !user) return res.status(404).json({ error: "User not found" });
+
+    if (user.referred_by) {
+        return res.json({ success: true, alreadyBound: true, referred_by: user.referred_by });
+    }
+
+    const { error: bindError } = await supabase
+        .from('users')
+        .update({ referred_by: referrer_id })
+        .eq(USER_ID_COLUMN, uid);
+    if (bindError) return res.status(500).json({ error: bindError.message });
+
+    return res.json({ success: true, alreadyBound: false, referred_by: referrer_id });
+});
+
 app.post('/auth', async (req, res) => {
     const { userId, username } = req.body;
     

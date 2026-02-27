@@ -233,13 +233,21 @@
             const raw = tg.initData || '';
             const unsafe = tg.initDataUnsafe?.start_param;
             if (unsafe) return String(unsafe);
-            const urlValue = new URLSearchParams(window.location.search).get('startapp');
-            if (urlValue) return String(urlValue);
+            const searchParams = new URLSearchParams(window.location.search);
+            const fromSearch = searchParams.get('startapp') || searchParams.get('start_param') || searchParams.get('tgWebAppStartParam');
+            if (fromSearch) return String(fromSearch);
             const hash = window.location.hash ? window.location.hash.slice(1) : '';
             if (hash) {
                 const hashParams = new URLSearchParams(hash);
-                const tgStart = hashParams.get('tgWebAppStartParam');
-                if (tgStart) return String(tgStart);
+                const fromHash = hashParams.get('tgWebAppStartParam') || hashParams.get('startapp') || hashParams.get('start_param');
+                if (fromHash) return String(fromHash);
+                const tgWebAppData = hashParams.get('tgWebAppData');
+                if (tgWebAppData) {
+                    const decoded = decodeURIComponent(tgWebAppData);
+                    const dataParams = new URLSearchParams(decoded);
+                    const nested = dataParams.get('start_param');
+                    if (nested) return String(nested);
+                }
             }
             if (!raw) return null;
             const params = new URLSearchParams(raw);
@@ -718,6 +726,16 @@
             user = userData;
             currentUser.id = userData.uid || userData.telegram_id || uid;
             currentUser.refCount = Number(userData.referral_count || userData.ref_count || currentUser.refCount || 0);
+
+            // Hard fallback: bind referrer once if still null.
+            if (referrerId && !userData.referred_by && String(referrerId) !== String(currentUser.id)) {
+                await fetch(`${BACKEND_URL}/bind-referrer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uid: currentUser.id, referrer_id: referrerId })
+                }).catch(() => {});
+            }
+
             updateUI(user);
             await initializeUser();
             initReferralPage();
