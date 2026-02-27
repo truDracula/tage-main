@@ -658,7 +658,7 @@ app.get('/leaderboard', async (req, res) => {
     if (type === 'refs') {
         const { data: users, error } = await supabase
             .from('users')
-            .select('uid, telegram_id, username, referred_by');
+            .select('*');
         if (error) return res.status(500).json(error);
 
         const counts = {};
@@ -671,10 +671,10 @@ app.get('/leaderboard', async (req, res) => {
 
         const ranking = (users || [])
             .map((u) => ({
-                uid: u.uid || u.telegram_id,
-                telegram_id: u.telegram_id || u.uid,
+                uid: u.uid || u.telegram_id || u[USER_ID_COLUMN],
+                telegram_id: u.telegram_id || u.uid || u[USER_ID_COLUMN],
                 username: u.username,
-                ref_count: counts[String(u.uid || u.telegram_id || '')] || 0
+                ref_count: counts[String(u.uid || u.telegram_id || u[USER_ID_COLUMN] || '')] || 0
             }))
             .sort((a, b) => b.ref_count - a.ref_count)
             .slice(0, 50);
