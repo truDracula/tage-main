@@ -656,9 +656,24 @@ app.get('/leaderboard', async (req, res) => {
     const type = req.query.sort || req.query.type || 'total';
 
     if (type === 'refs') {
-        const { data: users, error } = await supabase
+        let users = null;
+        let error = null;
+
+        // Try common schema variants without failing the endpoint.
+        ({ data: users, error } = await supabase
             .from('users')
-            .select('*');
+            .select('uid, telegram_id, username, referred_by'));
+
+        if (error) {
+            ({ data: users, error } = await supabase
+                .from('users')
+                .select(`username, referred_by, ${USER_ID_COLUMN}`));
+        }
+        if (error) {
+            ({ data: users, error } = await supabase
+                .from('users')
+                .select('username, referred_by'));
+        }
         if (error) return res.status(500).json(error);
 
         const counts = {};
@@ -669,15 +684,29 @@ app.get('/leaderboard', async (req, res) => {
             }
         }
 
-        const ranking = (users || [])
+        let ranking = (users || [])
             .map((u) => ({
-                uid: u.uid || u.telegram_id || u[USER_ID_COLUMN],
-                telegram_id: u.telegram_id || u.uid || u[USER_ID_COLUMN],
-                username: u.username,
+                uid: u.uid || u.telegram_id || u[USER_ID_COLUMN] || null,
+                telegram_id: u.telegram_id || u.uid || u[USER_ID_COLUMN] || null,
+                username: u.username || 'anon',
                 ref_count: counts[String(u.uid || u.telegram_id || u[USER_ID_COLUMN] || '')] || 0
             }))
             .sort((a, b) => b.ref_count - a.ref_count)
             .slice(0, 50);
+
+        // Last-resort fallback: if refs query produced no rows but users exist, show zero-ref rows.
+        if (!ranking.length) {
+            const { data: allUsers } = await supabase
+                .from('users')
+                .select(`username, ${USER_ID_COLUMN}`)
+                .limit(50);
+            ranking = (allUsers || []).map((u) => ({
+                uid: u[USER_ID_COLUMN] || null,
+                telegram_id: u[USER_ID_COLUMN] || null,
+                username: u.username || 'anon',
+                ref_count: 0
+            }));
+        }
 
         return res.json(ranking);
     }
