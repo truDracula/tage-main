@@ -522,22 +522,27 @@
             const pointsEl = document.getElementById('balance-display');
             const adCounter = document.getElementById('ad-count-display');
             const completedList = document.getElementById('completed-list');
+            const completedTasks = Array.isArray(userData?.completed_tasks) ? userData.completed_tasks : [];
 
             userCurrentPoints = Number(userData.points || 0);
             if (pointsEl) pointsEl.innerText = formatPoints(userData.points || 0);
             updateLeague(userData.points || 0);
             if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
 
-            if (btn && userData.completed_tasks && userData.completed_tasks.includes('twitter_follow')) {
+            if (btn && completedTasks.includes('twitter_follow')) {
                 btn.innerText = "CLAIMED";
                 btn.disabled = true;
                 btn.style.backgroundColor = "#6c757d";
                 btn.style.cursor = "not-allowed";
+            } else if (btn) {
+                btn.innerText = "GO";
+                btn.disabled = false;
+                btn.style.backgroundColor = "";
+                btn.style.cursor = "";
             }
 
             if (completedList) {
-                const done = userData.completed_tasks || [];
-                completedList.innerText = done.length ? done.join(', ') : "No tasks completed yet.";
+                completedList.innerText = completedTasks.length ? completedTasks.join(', ') : "No tasks completed yet.";
             }
         }
 

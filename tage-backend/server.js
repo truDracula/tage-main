@@ -15,6 +15,8 @@ app.use(express.json());
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const USER_ID_COLUMN = process.env.USER_ID_COLUMN || 'telegram_id';
 let bot = null;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ENABLE_BOT_WEBHOOK = process.env.ENABLE_BOT_WEBHOOK === 'true';
 
 app.get('/health', async (_req, res) => {
     const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL);
@@ -48,8 +50,8 @@ app.get('/health', async (_req, res) => {
 try {
     const TelegramBot = require('node-telegram-bot-api');
     const enableBotPolling = process.env.ENABLE_BOT_POLLING === 'true';
-    if (process.env.TELEGRAM_BOT_TOKEN && enableBotPolling) {
-        bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+    if (BOT_TOKEN && enableBotPolling) {
+        bot = new TelegramBot(BOT_TOKEN, { polling: true });
         bot.on('polling_error', (err) => {
             console.error('[bot polling error]', err?.message || err);
         });
@@ -75,12 +77,46 @@ Click the button below to launch the app!
                 }
             });
         });
-    } else if (process.env.TELEGRAM_BOT_TOKEN && !enableBotPolling) {
+    } else if (BOT_TOKEN && !enableBotPolling) {
         console.log('Bot polling disabled (ENABLE_BOT_POLLING != true).');
     }
 } catch (e) {
     // Bot is optional in this backend process.
 }
+
+app.post('/bot/webhook', async (req, res) => {
+    const update = req.body || {};
+    const msg = update.message;
+    if (!BOT_TOKEN || !msg || !msg.chat || !msg.text) return res.sendStatus(200);
+
+    if (msg.text.startsWith('/start')) {
+        const welcomeText = [
+            '*Welcome to Tage App!*',
+            '',
+            '*Earnings:* Watch ads and complete tasks to earn points.',
+            '*Referrals:* Earn 20% commission from your friends!',
+            '*Leagues:* Climb from Newbie to Titan.',
+            '',
+            'Click the button below to launch the app!'
+        ].join('\n');
+
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: msg.chat.id,
+                text: welcomeText,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: "Launch App", web_app: { url: "https://tage-main.vercel.app" } }
+                    ]]
+                }
+            })
+        }).catch(() => {});
+    }
+    res.sendStatus(200);
+});
 
 function verifyTelegramData(initData) {
     if (!initData || !process.env.TELEGRAM_BOT_TOKEN) return false;
@@ -370,6 +406,22 @@ app.post('/claim-task', async (req, res) => {
     }
     if (reward <= 0) {
         return res.status(400).json({ error: "Invalid task reward" });
+    }
+
+    // Persist completion in users.completed_tasks (JSON array) for clients that read this column.
+    const { data: claimUser, error: claimUserError } = await supabase
+        .from('users')
+        .select('completed_tasks')
+        .eq(USER_ID_COLUMN, userUid)
+        .single();
+    if (!claimUserError && claimUser) {
+        const existingTasks = Array.isArray(claimUser.completed_tasks) ? claimUser.completed_tasks : [];
+        if (!existingTasks.includes(taskId)) {
+            await supabase
+                .from('users')
+                .update({ completed_tasks: [...existingTasks, taskId] })
+                .eq(USER_ID_COLUMN, userUid);
+        }
     }
 
     await awardPoints(userUid, reward);
@@ -754,4 +806,13 @@ app.post('/admin/execute', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+
+    const webhookBase = process.env.WEBHOOK_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN || '';
+    if (ENABLE_BOT_WEBHOOK && BOT_TOKEN && webhookBase) {
+        const normalizedBase = webhookBase.startsWith('http') ? webhookBase : `https://${webhookBase}`;
+        const webhookUrl = `${normalizedBase.replace(/\/$/, '')}/bot/webhook`;
+        fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
+            .then(() => console.log(`Telegram webhook set: ${webhookUrl}`))
+            .catch((err) => console.error('Failed to set Telegram webhook:', err?.message || err));
+    }
 });
