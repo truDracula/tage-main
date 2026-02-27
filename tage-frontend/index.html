@@ -93,7 +93,7 @@
                 <div class="space-y-3">
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Follow $TAGE on X</p>
-                        <button id="task-btn" onclick="completeTask()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                        <button id="task-btn-1000" onclick="startTask(1000, 'https://x.com/your_handle', 1000)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Like this post</p>
@@ -379,36 +379,6 @@
             }
             return true;
         }
-
-        async function completeTask() {
-            const userId = window.Telegram.WebApp.initDataUnsafe.user?.id || user.uid || user.telegram_id;
-            const taskId = "twitter_follow";
-
-            // 1. Open the X link in a new tab
-            window.open("https://x.com/your_handle", "_blank");
-
-            // 2. Tell the backend to add points and mark task complete
-            const response = await fetch(`${BACKEND_URL}/complete-task`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    initData: tg.initData,
-                    telegram_id: userId,
-                    task_id: taskId
-                })
-            });
-
-            if (response.ok) {
-                user.points += 1000;
-                user.completed_tasks = [...(user.completed_tasks || []), taskId];
-                updateUI(user);
-                alert("1,000 Points Added!");
-            } else {
-                const error = await response.json();
-                alert(error.error || "Task claim failed");
-            }
-        }
-
         function startTask(taskId, link, points) {
             window.open(link, '_blank');
 
@@ -446,18 +416,18 @@
                 })
             });
 
-            if (res.ok) {
-                btn.innerText = "CLAIMED ✓";
+            const payload = await res.json().catch(() => ({}));
+            if (res.ok && payload?.success !== false) {
+                btn.innerText = "CLAIMED";
                 btn.style.background = "#059669";
                 btn.disabled = true;
                 await initializeUser();
                 loadLeaderboard('total');
                 alert("Points saved permanently!");
             } else {
-                const err = await res.json().catch(() => ({}));
                 btn.innerText = "CLAIM FAILED";
                 btn.disabled = false;
-                alert(err.error || err.message || "Claim failed. Try again.");
+                alert(payload.error || payload.message || "Claim failed. Try again.");
             }
         }
 
@@ -518,8 +488,7 @@
         }
 
         function updateUI(userData) {
-            const btn = document.getElementById('task-btn');
-            const pointsEl = document.getElementById('balance-display');
+                        const pointsEl = document.getElementById('balance-display');
             const adCounter = document.getElementById('ad-count-display');
             const completedList = document.getElementById('completed-list');
             const completedTasks = Array.isArray(userData?.completed_tasks) ? userData.completed_tasks : [];
@@ -528,18 +497,6 @@
             if (pointsEl) pointsEl.innerText = formatPoints(userData.points || 0);
             updateLeague(userData.points || 0);
             if (adCounter) adCounter.innerText = `${getTodayAdCount(userData)}/10`;
-
-            if (btn && completedTasks.includes('twitter_follow')) {
-                btn.innerText = "CLAIMED";
-                btn.disabled = true;
-                btn.style.backgroundColor = "#6c757d";
-                btn.style.cursor = "not-allowed";
-            } else if (btn) {
-                btn.innerText = "GO";
-                btn.disabled = false;
-                btn.style.backgroundColor = "";
-                btn.style.cursor = "";
-            }
 
             if (completedList) {
                 completedList.innerText = completedTasks.length ? completedTasks.join(', ') : "No tasks completed yet.";
@@ -779,4 +736,5 @@
     </script>
 </body>
 </html>
+
 
