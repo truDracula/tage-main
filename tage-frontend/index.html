@@ -195,6 +195,8 @@
         let currentLBTab = 'total';
         let pendingTelegramUser = null;
         let userCurrentPoints = 0;
+        let onboardingBonus = 0;
+        let isNewSessionUser = false;
 
         function resolveDisplayName() {
             const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
@@ -285,8 +287,28 @@
         }
 
         function enterApp() {
-            localStorage.setItem('isExistingUser', 'true');
-            showMainDashboard();
+            const userId = tg.initDataUnsafe?.user?.id || currentUser.id;
+            const claimPromise = isNewSessionUser
+                ? fetch(`${BACKEND_URL}/claim-onboarding`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        initData: tg.initData,
+                        uid: userId
+                    })
+                }).then((r) => r.json().catch(() => ({}))).catch(() => ({}))
+                : Promise.resolve({});
+
+            claimPromise.then((claimData) => {
+                if (claimData?.success && typeof claimData.newPoints !== 'undefined') {
+                    updateUIPoints(claimData.newPoints);
+                } else if (isNewSessionUser) {
+                    updateUIPoints(userCurrentPoints + Number(onboardingBonus || 0));
+                }
+                localStorage.setItem('isExistingUser', 'true');
+                showMainDashboard();
+                showView('home');
+            });
         }
 
         function showView(name) {
@@ -658,10 +680,47 @@
             initReferralPage();
             loadTaskCards();
             updateMilestoneUI(currentUser.refCount);
-
-            showMainDashboard();
-            showView('home');
             return userData;
+        }
+
+        function runNewUserOnboardingSequence(userData) {
+            const analyze = document.getElementById('analyze-screen');
+            const status = document.getElementById('status');
+            const bar = document.getElementById('progress-bar');
+            const rewardEl = document.getElementById('reward-text');
+            const result = document.getElementById('result');
+            const ageDays = Number(userData?.account_age_days || 30);
+            const premium = ageDays > 365;
+            onboardingBonus = Math.max(500, Math.min(ageDays * 10, 50000));
+
+            analyze.classList.remove('hidden');
+            result.classList.add('hidden');
+            bar.style.width = '0%';
+
+            const steps = [
+                { text: 'Checking account age...', pct: 30, wait: 1000 },
+                { text: `Account age: ${ageDays} days`, pct: 60, wait: 1000 },
+                { text: premium ? 'Premium status: detected' : 'Premium status: not detected', pct: 85, wait: 900 },
+                { text: 'Finalizing bonus...', pct: 100, wait: 800 }
+            ];
+
+            let idx = 0;
+            function next() {
+                if (idx >= steps.length) {
+                    rewardEl.innerText = formatPoints(onboardingBonus);
+                    result.classList.remove('hidden');
+                    isNewSessionUser = true;
+                    return;
+                }
+                status.innerText = steps[idx].text;
+                bar.style.width = `${steps[idx].pct}%`;
+                const wait = steps[idx].wait;
+                setTimeout(() => {
+                    idx++;
+                    next();
+                }, wait);
+            }
+            next();
         }
 
         function runCleanAnalysis() {
@@ -720,9 +779,13 @@
                     checkUserStatus(user.id, user.username || user.first_name).then((userData) => {
                         if (!userData || userData.status === 'banned') return;
                         if (userData.isNewUser) {
-                            runCleanAnalysis();
+                            runCleanAnalysis().then(() => {
+                                runNewUserOnboardingSequence(userData);
+                            });
                         } else {
                             hideLoadingScreen();
+                            showMainDashboard();
+                            showView('home');
                         }
                     });
                 } else if (checkCount >= 20) {

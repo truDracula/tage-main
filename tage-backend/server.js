@@ -142,8 +142,25 @@ function verifyTelegramData(initData) {
     return signature === hash;
 }
 
+function estimateAccountAgeDays(userId) {
+    const n = Math.abs(Number(userId) || 0);
+    return (n % 2500) + 30;
+}
+
 async function awardPoints(userId, amount) {
-    await supabase.rpc('increment_points', { user_id: userId, amount });
+    const rpcResult = await supabase.rpc('increment_points', { user_id: userId, amount });
+    if (rpcResult.error) {
+        const { data: baseUser } = await supabase
+            .from('users')
+            .select('points')
+            .eq(USER_ID_COLUMN, userId)
+            .single();
+        const current = Number(baseUser?.points || 0);
+        await supabase
+            .from('users')
+            .update({ points: current + Number(amount || 0) })
+            .eq(USER_ID_COLUMN, userId);
+    }
 
     const { data: user } = await supabase
         .from('users')
@@ -154,10 +171,22 @@ async function awardPoints(userId, amount) {
     if (user && user.referred_by) {
         const commission = Math.floor(amount * 0.20);
         if (commission > 0) {
-            await supabase.rpc('increment_points', {
+            const refRpc = await supabase.rpc('increment_points', {
                 user_id: user.referred_by,
                 amount: commission
             });
+            if (refRpc.error) {
+                const { data: refUser } = await supabase
+                    .from('users')
+                    .select('points')
+                    .eq(USER_ID_COLUMN, user.referred_by)
+                    .single();
+                const refCurrent = Number(refUser?.points || 0);
+                await supabase
+                    .from('users')
+                    .update({ points: refCurrent + commission })
+                    .eq(USER_ID_COLUMN, user.referred_by);
+            }
         }
     }
 }
@@ -237,7 +266,7 @@ async function upsertUser(telegram_id, username, referrer_id) {
             username,
             referred_by: referredBy,
             points: 0,
-            account_age_days: 0,
+            account_age_days: estimateAccountAgeDays(telegram_id),
             completed_tasks: [],
             ads_watched_today: 0,
             last_ad_date: null
@@ -426,6 +455,58 @@ app.post('/claim-task', async (req, res) => {
 
     await awardPoints(userUid, reward);
     res.json({ success: true });
+});
+
+app.post('/claim-onboarding', async (req, res) => {
+    const { initData, uid } = req.body;
+    const userUid = uid;
+    if (!userUid) return res.status(400).json({ error: "Missing uid" });
+    if (initData && !verifyTelegramData(initData)) {
+        return res.status(403).json({ error: "Invalid signature. Stop hacking!" });
+    }
+
+    const { data: onboardingUser, error: onboardingUserError } = await supabase
+        .from('users')
+        .select('points, account_age_days, completed_tasks')
+        .eq(USER_ID_COLUMN, userUid)
+        .single();
+    if (onboardingUserError || !onboardingUser) {
+        return res.status(404).json({ error: "User not found" });
+    }
+
+    const completed = Array.isArray(onboardingUser.completed_tasks) ? onboardingUser.completed_tasks : [];
+    if (completed.includes('onboarding_bonus')) {
+        return res.json({
+            success: true,
+            alreadyClaimed: true,
+            bonus: 0,
+            newPoints: Number(onboardingUser.points || 0)
+        });
+    }
+
+    const ageDays = Number(onboardingUser.account_age_days || estimateAccountAgeDays(userUid));
+    const bonus = Math.max(500, Math.min(ageDays * 10, 50000));
+
+    await awardPoints(userUid, bonus);
+    const updatedCompleted = [...completed, 'onboarding_bonus'];
+    await supabase
+        .from('users')
+        .update({ completed_tasks: updatedCompleted, account_age_days: ageDays })
+        .eq(USER_ID_COLUMN, userUid);
+
+    const { data: refreshed } = await supabase
+        .from('users')
+        .select('points')
+        .eq(USER_ID_COLUMN, userUid)
+        .single();
+
+    res.json({
+        success: true,
+        alreadyClaimed: false,
+        bonus,
+        ageDays,
+        newPoints: Number(refreshed?.points || onboardingUser.points || 0)
+    });
 });
 
 app.post('/record-action', async (req, res) => {
