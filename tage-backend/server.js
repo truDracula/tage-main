@@ -439,14 +439,18 @@ app.post('/record-action', async (req, res) => {
         return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const { error } = await supabase
-        .from('completed_actions')
-        .insert([{
-            user_id: userId,
-            action_type: String(action_type),
-            action_id: String(action_id),
-            reward_amount: Number(reward_amount || 0)
-        }]);
+    let error = null;
+    if (String(action_type) === 'task') {
+        const result = await supabase
+            .from('completed_tasks')
+            .insert([{
+                user_id: userId,
+                task_id: Number(action_id)
+            }]);
+        error = result.error || null;
+    } else if (String(action_type) === 'ad') {
+        error = await recordAdWatch(userId, Number(reward_amount || 0));
+    }
 
     if (error) {
         return res.status(500).json({ error: `DB Error: ${error.message}` });
@@ -607,14 +611,8 @@ app.get('/get-tasks', async (req, res) => {
     if (!completedError) {
         for (const row of (completedRows || [])) completedIds.add(Number(row.task_id));
     } else if (completionsError) {
-        // Fallback for alternate schema
-        const { data: finishedActions, error: finishedError } = await supabase
-            .from('completed_actions')
-            .select('action_id')
-            .eq('user_id', uid)
-            .eq('action_type', 'task');
-        if (finishedError) return res.status(500).json({ error: finishedError.message });
-        completedIds = new Set((finishedActions || []).map((row) => Number(row.action_id)));
+        // If neither completion table exists, return all tasks instead of hard failing.
+        return res.json(allTasks || []);
     }
 
     const filtered = (allTasks || []).filter((task) => !completedIds.has(Number(task.id)));
