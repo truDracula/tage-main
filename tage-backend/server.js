@@ -677,10 +677,32 @@ app.get('/leaderboard', async (req, res) => {
         if (error) return res.status(500).json(error);
 
         const counts = {};
+        const idToOwnerKey = {};
+        const usernameToOwnerKey = {};
+
+        for (const u of users || []) {
+            const ownerKey = String(u.uid || u.telegram_id || u[USER_ID_COLUMN] || '');
+            if (!ownerKey) continue;
+            idToOwnerKey[ownerKey] = ownerKey;
+            const uname = String(u.username || '').trim().toLowerCase();
+            if (uname) {
+                usernameToOwnerKey[uname] = ownerKey;
+                usernameToOwnerKey[`@${uname}`] = ownerKey;
+            }
+        }
+
         for (const u of users || []) {
             if (u.referred_by !== null && u.referred_by !== undefined && String(u.referred_by) !== '') {
-                const refKey = String(u.referred_by);
-                counts[refKey] = (counts[refKey] || 0) + 1;
+                const raw = String(u.referred_by).trim();
+                const lowerRaw = raw.toLowerCase();
+                const ownerKey =
+                    idToOwnerKey[raw] ||
+                    idToOwnerKey[String(Number(raw))] ||
+                    usernameToOwnerKey[lowerRaw] ||
+                    usernameToOwnerKey[`@${lowerRaw.replace(/^@/, '')}`];
+                if (ownerKey) {
+                    counts[ownerKey] = (counts[ownerKey] || 0) + 1;
+                }
             }
         }
 
