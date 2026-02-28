@@ -114,6 +114,10 @@
                         <button id="task-btn-9010" onclick="startTask(9010, 'https://t.me/+Hl1x0BIvDFk3MThk', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
                     <div class="glass p-5 rounded-2xl flex justify-between items-center">
+                        <p class="font-bold">Like this post on channel</p>
+                        <button id="task-btn-9011" onclick="startTask(9011, 'https://t.me/c/3857955615/5', 500)" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
+                    </div>
+                    <div class="glass p-5 rounded-2xl flex justify-between items-center">
                         <p class="font-bold">Watch an Ad</p>
                         <button onclick="watchAd()" class="bg-blue-600 px-4 py-1 rounded-lg text-xs font-bold uppercase">Go</button>
                     </div>
@@ -564,7 +568,7 @@
 
             // Disable hardcoded Today tasks if claimed today (taskId:YYYY-MM-DD keys).
             const today = new Date().toISOString().split('T')[0];
-            const ids = [1000, 9001, 9002, 9003, 9010];
+            const ids = [1000, 9001, 9002, 9003, 9010, 9011];
             ids.forEach((id) => {
                 const btn = document.getElementById(`task-btn-${id}`);
                 if (!btn) return;
