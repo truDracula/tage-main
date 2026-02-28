@@ -78,13 +78,18 @@
         }
         .dots {
             display: inline-block;
-            width: 18px;
+            width: 22px;
             text-align: left;
-            animation: dots 1.2s steps(4, end) infinite;
         }
-        @keyframes dots {
-            0% { width: 0; }
-            100% { width: 18px; }
+        .dots::after {
+            content: ".";
+            animation: dotsCycle 1.2s linear infinite;
+        }
+        @keyframes dotsCycle {
+            0% { content: "."; }
+            33% { content: ".."; }
+            66% { content: "..."; }
+            100% { content: "."; }
         }
         .loading-particle {
             position: absolute;
@@ -115,7 +120,7 @@
         </div>
 
         <div id="loading-text" class="loading-copy">
-            Getting things ready<span class="dots">...</span>
+            Getting things ready<span class="dots"></span>
         </div>
 
         <div style="width: 60%; height: 2px; background: #1e293b; border-radius: 5px; overflow: hidden;">
