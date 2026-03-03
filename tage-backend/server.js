@@ -17,6 +17,109 @@ const USER_ID_COLUMN = process.env.USER_ID_COLUMN || 'telegram_id';
 let bot = null;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ENABLE_BOT_WEBHOOK = process.env.ENABLE_BOT_WEBHOOK === 'true';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://tage-main.vercel.app';
+const BOT_OPEN_URL = process.env.BOT_OPEN_URL || '';
+const AD_REMINDER_TEXT = "☕️ Wake up, $TAGE Earner! Don't let your share of the $1,000 TON pool slip away. Your 10 ads are refreshed and ready for claiming!";
+
+async function sendTelegramMessage(chatId, text, options = {}) {
+    if (!BOT_TOKEN || !chatId) return false;
+    try {
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text,
+                ...options
+            })
+        });
+        return response.ok;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function sendAdReminderToAllUsers(customMessage) {
+    if (!BOT_TOKEN) throw new Error("Missing TELEGRAM_BOT_TOKEN");
+
+    const baseReminderText = String(customMessage || AD_REMINDER_TEXT);
+    const reminderText = BOT_OPEN_URL ? baseReminderText : `${baseReminderText}\n\nOpen bot command: /start`;
+    const { data: users, error } = await supabase.from('users').select(USER_ID_COLUMN);
+    if (error) throw error;
+
+    const reminderKeyboard = [
+        [{ text: "Launch App", web_app: { url: WEB_APP_URL } }]
+    ];
+    if (BOT_OPEN_URL) {
+        reminderKeyboard.push([{ text: "Open Bot", url: BOT_OPEN_URL }]);
+    }
+
+    let successCount = 0;
+    for (const u of users || []) {
+        if (!u[USER_ID_COLUMN]) continue;
+        const ok = await sendTelegramMessage(u[USER_ID_COLUMN], reminderText, {
+            reply_markup: {
+                inline_keyboard: reminderKeyboard
+            }
+        });
+        if (ok) successCount++;
+    }
+
+    return successCount;
+}
+
+function startAdReminderTask() {
+    const isEnabled = process.env.ENABLE_AD_REMINDER_TASK === 'true';
+    if (!isEnabled) return;
+
+    const runTask = async () => {
+        try {
+            const successCount = await sendAdReminderToAllUsers();
+            console.log(`[ad reminder task] sent to ${successCount} users`);
+        } catch (err) {
+            console.error('[ad reminder task] failed:', err?.message || err);
+        }
+    };
+
+    const scheduleMode = String(process.env.AD_REMINDER_SCHEDULE || 'daily').toLowerCase();
+    if (scheduleMode === 'daily') {
+        const utcHour = Number(process.env.AD_REMINDER_UTC_HOUR || 12);
+        const utcMinute = Number(process.env.AD_REMINDER_UTC_MINUTE || 0);
+
+        if (!Number.isInteger(utcHour) || utcHour < 0 || utcHour > 23) {
+            console.error('[ad reminder task] invalid AD_REMINDER_UTC_HOUR, expected 0-23');
+            return;
+        }
+        if (!Number.isInteger(utcMinute) || utcMinute < 0 || utcMinute > 59) {
+            console.error('[ad reminder task] invalid AD_REMINDER_UTC_MINUTE, expected 0-59');
+            return;
+        }
+
+        const now = new Date();
+        const nextRun = new Date(now);
+        nextRun.setUTCHours(utcHour, utcMinute, 0, 0);
+        if (nextRun <= now) nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+        const delayMs = nextRun.getTime() - now.getTime();
+
+        setTimeout(async () => {
+            await runTask();
+            setInterval(runTask, 24 * 60 * 60 * 1000);
+        }, delayMs);
+
+        console.log(`[ad reminder task] enabled, daily at ${String(utcHour).padStart(2, '0')}:${String(utcMinute).padStart(2, '0')} UTC`);
+        return;
+    }
+
+    const intervalMinutes = Number(process.env.AD_REMINDER_INTERVAL_MINUTES || 0);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+        console.error('[ad reminder task] invalid AD_REMINDER_INTERVAL_MINUTES for interval mode');
+        return;
+    }
+    const intervalMs = intervalMinutes * 60 * 1000;
+    setInterval(runTask, intervalMs);
+
+    console.log(`[ad reminder task] enabled, every ${intervalMinutes} minutes`);
+}
 
 app.get('/health', async (_req, res) => {
     const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL);
@@ -72,7 +175,7 @@ Click the button below to launch the app!
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: "Launch App", web_app: { url: "https://tage-main.vercel.app" } }
+                        { text: "Launch App", web_app: { url: WEB_APP_URL } }
                     ]]
                 }
             });
@@ -109,7 +212,7 @@ app.post('/bot/webhook', async (req, res) => {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: "Launch App", web_app: { url: "https://tage-main.vercel.app" } }
+                        { text: "Launch App", web_app: { url: WEB_APP_URL } }
                     ]]
                 }
             })
@@ -1002,6 +1105,12 @@ app.post('/admin/execute', async (req, res) => {
                 return res.json({ success: true, successCount });
             }
 
+            case 'send_ad_reminder': {
+                const customMessage = payload?.message;
+                const successCount = await sendAdReminderToAllUsers(customMessage);
+                return res.json({ success: true, message: "Ad reminder sent", successCount });
+            }
+
             default:
                 return res.status(400).json({ error: "Invalid Action" });
         }
@@ -1013,6 +1122,7 @@ app.post('/admin/execute', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+    startAdReminderTask();
 
     const webhookBase = process.env.WEBHOOK_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN || '';
     if (ENABLE_BOT_WEBHOOK && BOT_TOKEN && webhookBase) {
