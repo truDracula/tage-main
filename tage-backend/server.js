@@ -68,6 +68,31 @@ async function sendAdReminderToAllUsers(customMessage) {
     return successCount;
 }
 
+function getLaunchKeyboard() {
+    return {
+        inline_keyboard: [[
+            { text: "Launch App", web_app: { url: WEB_APP_URL } }
+        ]]
+    };
+}
+
+async function sendWelcomeMessage(chatId) {
+    const welcomeText = [
+        '*Welcome to Tage App!*',
+        '',
+        '*Earnings:* Watch ads and complete tasks to earn points.',
+        '*Referrals:* Earn 20% commission from your friends!',
+        '*Leagues:* Climb from Newbie to Titan.',
+        '',
+        'Click the button below to launch the app!'
+    ].join('\n');
+
+    return sendTelegramMessage(chatId, welcomeText, {
+        parse_mode: 'Markdown',
+        reply_markup: getLaunchKeyboard()
+    });
+}
+
 function startAdReminderTask() {
     const isEnabled = process.env.ENABLE_AD_REMINDER_TASK === 'true';
     if (!isEnabled) return;
@@ -159,26 +184,9 @@ try {
             console.error('[bot polling error]', err?.message || err);
         });
 
-        bot.onText(/\/start/, (msg) => {
+        bot.onText(/^\/start(?:@\w+)?(?:\s|$)/, async (msg) => {
             const chatId = msg.chat.id;
-            const welcomeText = `
-*Welcome to Tage App!*
-
-*Earnings:* Watch ads and complete tasks to earn points.
-*Referrals:* Earn 20% commission from your friends!
-*Leagues:* Climb from Newbie to Titan.
-
-Click the button below to launch the app!
-            `;
-
-            bot.sendMessage(chatId, welcomeText, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: "Launch App", web_app: { url: WEB_APP_URL } }
-                    ]]
-                }
-            });
+            await sendWelcomeMessage(chatId);
         });
     } else if (BOT_TOKEN && !enableBotPolling) {
         console.log('Bot polling disabled (ENABLE_BOT_POLLING != true).');
@@ -192,31 +200,8 @@ app.post('/bot/webhook', async (req, res) => {
     const msg = update.message;
     if (!BOT_TOKEN || !msg || !msg.chat || !msg.text) return res.sendStatus(200);
 
-    if (msg.text.startsWith('/start')) {
-        const welcomeText = [
-            '*Welcome to Tage App!*',
-            '',
-            '*Earnings:* Watch ads and complete tasks to earn points.',
-            '*Referrals:* Earn 20% commission from your friends!',
-            '*Leagues:* Climb from Newbie to Titan.',
-            '',
-            'Click the button below to launch the app!'
-        ].join('\n');
-
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: msg.chat.id,
-                text: welcomeText,
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: "Launch App", web_app: { url: WEB_APP_URL } }
-                    ]]
-                }
-            })
-        }).catch(() => {});
+    if (/^\/start(?:@\w+)?(?:\s|$)/.test(msg.text.trim())) {
+        await sendWelcomeMessage(msg.chat.id);
     }
     res.sendStatus(200);
 });
